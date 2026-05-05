@@ -12,6 +12,9 @@ export default function AppLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="workouts/[id]" />
+      <Stack.Screen name="workouts/[id]/session" />
+      <Stack.Screen name="workouts/[id]/finish" />
     </Stack>
   );
 }
