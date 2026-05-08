@@ -43,7 +43,7 @@ export function HomeScreen() {
   };
 
   const greeting = getGreeting();
-  const userName = session?.name || 'Aluno';
+  const firstName = (session?.name || 'Aluno').split(' ')[0];
   
   // Só mostra o card se houver um questionário liberado E o aluno ainda não tiver enviado uma resposta para ele
   const questionnaire = session?.released_questionnaire;
@@ -55,7 +55,7 @@ export function HomeScreen() {
   const showQuestionnaireCard = questionnaire && !hasSubmittedEvaluation;
 
   return (
-    <AppShell greeting={greeting} title={userName} contentClassName="pb-32">
+    <AppShell title={`${greeting}, ${firstName}.`} contentClassName="pb-32">
       
       {/* Extreme Priority Action */}
       {showQuestionnaireCard && (

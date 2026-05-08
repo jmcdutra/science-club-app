@@ -69,7 +69,7 @@ export function DietMealDetailScreen() {
           <AppText className="text-text-muted text-xs font-bold tracking-[0.3em] uppercase mb-3">
             {meal.context} • {getStatusLabel(status)}
           </AppText>
-          <AppText className="font-heading text-5xl font-bold text-text-main tracking-tight leading-[1.05]">
+          <AppText className="font-heading text-3xl font-bold text-text-main">
             {meal.name}
           </AppText>
           {meal.notes && (

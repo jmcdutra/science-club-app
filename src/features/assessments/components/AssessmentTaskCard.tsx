@@ -45,7 +45,7 @@ export function AssessmentTaskCard({
       </View>
       <View className="ml-4 flex-1">
         <View className="flex-row items-center gap-2">
-          <AppText className="flex-1 text-base font-semibold text-text-main">{title}</AppText>
+          <AppText className="flex-1 text-base font-bold text-text-main">{title}</AppText>
           {done ? (
             <CheckCircle color="#34D399" size={18} weight="fill" />
           ) : urgent ? (
@@ -53,7 +53,7 @@ export function AssessmentTaskCard({
           ) : null}
         </View>
         <AppText className="mt-1 text-sm leading-snug text-text-muted">{description}</AppText>
-        <AppText className={cn('mt-2 text-xs font-semibold', done ? 'text-emerald-300' : neutral ? 'text-text-muted' : 'text-brand-secondary')}>
+        <AppText className={cn('mt-2 text-xs font-bold', done ? 'text-emerald-300' : neutral ? 'text-text-muted' : 'text-brand-secondary')}>
           {progressLabel}
         </AppText>
       </View>

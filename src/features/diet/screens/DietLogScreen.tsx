@@ -1,6 +1,6 @@
-import { ArrowLeft, Check, ForkKnife, Scales, Swap } from 'phosphor-react-native';
+import { ArrowLeft, Check } from 'phosphor-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
@@ -18,19 +18,19 @@ export function DietLogScreen() {
   const params = useLocalSearchParams<{ mealId?: string; foodId?: string; replacementId?: string }>();
   const plan = useDietStore((state) => state.plan);
   const logFood = useDietStore((state) => state.logFood);
-  
+
   const initialMeal = plan.meals.find((meal) => meal.id === params.mealId) ?? plan.meals[0];
   const [mealId, setMealId] = useState(initialMeal.id);
   const selectedMeal = plan.meals.find((meal) => meal.id === mealId) ?? initialMeal;
-  
+
   const initialFood = selectedMeal.foods.find((food) => food.id === params.foodId) ?? selectedMeal.foods[0];
   const [foodId, setFoodId] = useState(initialFood.id);
   const selectedFood = selectedMeal.foods.find((food) => food.id === foodId) ?? selectedMeal.foods[0];
-  
+
   const initialReplacement = selectedFood.substitutions?.find((item) => item.id === params.replacementId);
   const [replacement, setReplacement] = useState<DietFoodSubstitution | undefined>(initialReplacement);
   const source = replacement ?? selectedFood;
-  
+
   const [grams, setGrams] = useState(String(source.plannedGrams));
   const [calories, setCalories] = useState('');
   const [protein, setProtein] = useState('');
@@ -49,6 +49,21 @@ export function DietLogScreen() {
       setFat(String(formatMacro(nutrition.fat)));
     }
   }, [grams, source, isManual]);
+
+  function handleMacroChange(setter: (v: string) => void, value: string) {
+    setIsManual(true);
+    setter(value);
+  }
+
+  function resetToGrams() {
+    setIsManual(false);
+    const n = Number(grams.replace(',', '.'));
+    const nutrition = scaleNutrition(source, Number.isFinite(n) ? n : 0);
+    setCalories(String(Math.round(nutrition.calories)));
+    setProtein(String(formatMacro(nutrition.protein)));
+    setCarbs(String(formatMacro(nutrition.carbs)));
+    setFat(String(formatMacro(nutrition.fat)));
+  }
 
   const save = () => {
     const numericGrams = Number(grams.replace(',', '.'));
@@ -69,6 +84,13 @@ export function DietLogScreen() {
     router.replace(`/(app)/diet/meals/${selectedMeal.id}`);
   };
 
+  const macroFields = [
+    { label: 'Calorias', value: calories, setter: setCalories, color: '#8B5CF6', unit: 'kcal' },
+    { label: 'Proteína', value: protein, setter: setProtein, color: '#38BDF8', unit: 'g' },
+    { label: 'Carboidratos', value: carbs, setter: setCarbs, color: '#F59E0B', unit: 'g' },
+    { label: 'Gorduras', value: fat, setter: setFat, color: '#FB7185', unit: 'g' },
+  ];
+
   return (
     <AppScreen keyboard contentClassName="px-6 pb-32 pt-8">
       {/* Header */}
@@ -81,15 +103,19 @@ export function DietLogScreen() {
           <ArrowLeft color={isDark ? '#FFFFFF' : '#111827'} size={20} weight="bold" />
         </Pressable>
         <AppText className="text-xs font-bold uppercase tracking-[0.2em] text-text-muted">
-          Pesar Alimento
+          Registrar Alimento
         </AppText>
-        <View className="h-11 w-11 items-center justify-center rounded-full bg-bg-surface border border-border-subtle">
-          <Scales color="#A78BFA" size={18} weight="duotone" />
-        </View>
+        <Pressable
+          accessibilityRole="button"
+          className="h-11 w-11 items-center justify-center rounded-full bg-bg-surface border border-border-subtle"
+          onPress={save}
+        >
+          <Check color="#A78BFA" size={18} weight="bold" />
+        </Pressable>
       </View>
 
-      {/* Selection Section */}
-      <Animated.View entering={FadeInDown.duration(400)} className="mb-12">
+      {/* Meal Selection */}
+      <Animated.View entering={FadeInDown.duration(400)} className="mb-8">
         <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em] mb-4">Refeição</AppText>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2.5">
           {plan.meals.map((meal) => {
@@ -117,8 +143,11 @@ export function DietLogScreen() {
             );
           })}
         </ScrollView>
+      </Animated.View>
 
-        <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em] mb-4 mt-8">Alimento</AppText>
+      {/* Food Selection */}
+      <Animated.View entering={FadeInDown.delay(50).duration(400)} className="mb-8">
+        <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em] mb-4">Alimento</AppText>
         <View className="gap-2.5">
           {selectedMeal.foods.map((food) => {
             const isSelected = food.id === selectedFood.id;
@@ -137,92 +166,182 @@ export function DietLogScreen() {
                   setIsManual(false);
                 }}
               >
-                <View className={cn(
-                  "h-8 w-8 items-center justify-center rounded-full mr-3",
-                  isSelected ? "bg-brand-primary" : "bg-bg-base border border-border-subtle"
-                )}>
-                   <ForkKnife color={isSelected ? "#FFFFFF" : (isDark ? "#888888" : "#666666")} size={16} weight="duotone" />
-                </View>
+                <View
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    marginRight: 12,
+                    backgroundColor: isSelected ? '#8B5CF6' : (isDark ? '#333333' : '#CCCCCC'),
+                  }}
+                />
                 <View className="flex-1">
-                  <AppText className="text-base font-semibold text-text-main">{food.name}</AppText>
+                  <AppText className="text-base font-bold text-text-main">{food.name}</AppText>
                   <AppText className="mt-0.5 text-xs text-text-muted">{food.displayQuantity}</AppText>
                 </View>
-                {isSelected && <Check color="#A78BFA" size={18} weight="bold" />}
+                {isSelected && <Check color="#A78BFA" size={16} weight="bold" />}
               </Pressable>
             );
           })}
         </View>
-      </Animated.View>
 
-      {/* Input Section */}
-      <Animated.View entering={FadeInDown.delay(100).duration(600)} className="mb-12">
-        <View className="flex-row items-end justify-between border-b border-border-subtle pb-4 mb-8">
-           <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">Peso Consumido</AppText>
-           <AppText className="text-xs text-text-muted">Prescrito: {source.plannedGrams}g</AppText>
-        </View>
-
-        <View className="flex-row items-center justify-center mb-10">
-          <TextInput
-            className="text-7xl font-bold tracking-tighter text-text-main"
-            cursorColor="#8B5CF6"
-            keyboardType="decimal-pad"
-            onChangeText={setGrams}
-            placeholder="0"
-            placeholderTextColor={isDark ? "#333333" : "#E5E5E5"}
-            selectionColor="#8B5CF6"
-            value={grams}
-          />
-          <AppText className="ml-2 text-4xl font-bold text-text-muted mb-2">g</AppText>
-        </View>
-
-        <View className="mb-6 flex-row items-center justify-between">
-           <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">Informação Nutricional</AppText>
-           <Pressable 
-              className={cn("px-3 py-1.5 rounded-full border", isManual ? "bg-brand-primary border-brand-primary" : "border-border-subtle")}
-              onPress={() => setIsManual(!isManual)}
-           >
-              <AppText className={cn("text-[10px] font-bold uppercase", isManual ? "text-white" : "text-text-muted")}>
-                {isManual ? "Ajuste Manual On" : "Ajustar Manualmente"}
-              </AppText>
-           </Pressable>
-        </View>
-
-        <View className="flex-row gap-4 flex-wrap">
-           {[
-             { label: 'kcal', value: calories, setter: setCalories, color: 'text-text-main', tone: 'calories' },
-             { label: 'P (g)', value: protein, setter: setProtein, color: 'text-sky-400', tone: 'protein' },
-             { label: 'C (g)', value: carbs, setter: setCarbs, color: 'text-amber-400', tone: 'carbs' },
-             { label: 'G (g)', value: fat, setter: setFat, color: 'text-rose-400', tone: 'fat' },
-           ].map((item) => (
-             <View 
-                key={item.label} 
+        {/* Substitutions */}
+        {selectedFood.substitutions && selectedFood.substitutions.length > 0 && (
+          <View className="mt-4">
+            <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em] mb-3">Substituições</AppText>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
+              <Pressable
+                accessibilityRole="button"
                 className={cn(
-                  "flex-1 min-w-[70px] items-center py-4 rounded-2xl bg-bg-surface border",
-                  isManual ? "border-brand-primary/30 shadow-sm" : "border-border-subtle"
+                  'rounded-full border px-4 py-2',
+                  !replacement ? 'border-brand-primary bg-brand-primary' : 'border-border-subtle bg-bg-surface',
                 )}
-             >
-               <AppText className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1.5">{item.label}</AppText>
-               {isManual ? (
-                 <TextInput
-                    className={cn("text-base font-bold text-center w-full", item.color)}
-                    keyboardType="decimal-pad"
-                    onChangeText={item.setter}
-                    value={item.value}
-                 />
-               ) : (
-                 <AppText className={cn('text-base font-bold', item.color)}>{item.value}</AppText>
-               )}
-             </View>
-           ))}
-        </View>
-        {isManual && (
-           <AppText className="mt-4 text-[10px] text-center text-brand-secondary font-medium">
-             Ajustes manuais ignoram o cálculo automático da gramagem.
-           </AppText>
+                onPress={() => {
+                  setReplacement(undefined);
+                  setIsManual(false);
+                  setGrams(String(selectedFood.plannedGrams));
+                }}
+              >
+                <AppText className={cn('text-sm font-bold', !replacement ? 'text-white' : 'text-text-main')}>
+                  Original
+                </AppText>
+              </Pressable>
+              {selectedFood.substitutions.map((sub) => {
+                const isActive = replacement?.id === sub.id;
+                return (
+                  <Pressable
+                    key={sub.id}
+                    accessibilityRole="button"
+                    className={cn(
+                      'rounded-full border px-4 py-2',
+                      isActive ? 'border-brand-primary bg-brand-primary' : 'border-border-subtle bg-bg-surface',
+                    )}
+                    onPress={() => {
+                      setReplacement(sub);
+                      setIsManual(false);
+                      setGrams(String(sub.plannedGrams));
+                    }}
+                  >
+                    <AppText className={cn('text-sm font-bold', isActive ? 'text-white' : 'text-text-main')}>
+                      {sub.name}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
         )}
       </Animated.View>
 
-      {/* Action */}
+      {/* Grams Section */}
+      <Animated.View entering={FadeInDown.delay(100).duration(600)} className="mb-8">
+        <View className="flex-row items-center justify-between border-b border-border-subtle pb-4 mb-6">
+          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">Gramagem</AppText>
+          <AppText className="text-xs text-text-muted">Prescrito: {source.plannedGrams}g</AppText>
+        </View>
+
+        <View className="flex-row items-center gap-3 mb-4">
+          <View
+            className="flex-1 flex-row items-center rounded-2xl bg-bg-surface border border-border-subtle px-4"
+            style={{ height: 56 }}
+          >
+            <TextInput
+              style={{ flex: 1, fontSize: 30, fontWeight: '700', color: isDark ? '#FFFFFF' : '#111827' }}
+              cursorColor="#8B5CF6"
+              keyboardType="decimal-pad"
+              onChangeText={setGrams}
+              placeholder="0"
+              placeholderTextColor={isDark ? '#333333' : '#E5E5E5'}
+              selectionColor="#8B5CF6"
+              value={grams}
+            />
+            <AppText className="text-base font-bold text-text-muted ml-1">g</AppText>
+          </View>
+
+          {[
+            { label: '50%', factor: 0.5 },
+            { label: '100%', factor: 1 },
+            { label: '150%', factor: 1.5 },
+          ].map((preset) => (
+            <Pressable
+              key={preset.label}
+              accessibilityRole="button"
+              className="px-3 py-2 rounded-full bg-bg-surface border border-border-subtle"
+              onPress={() => {
+                setGrams(String(Math.round(source.plannedGrams * preset.factor)));
+                setIsManual(false);
+              }}
+            >
+              <AppText className="text-xs font-bold text-text-muted">{preset.label}</AppText>
+            </Pressable>
+          ))}
+        </View>
+      </Animated.View>
+
+      {/* Macros Section */}
+      <Animated.View entering={FadeInDown.delay(150).duration(600)} className="mb-12">
+        <View className="flex-row items-center justify-between border-b border-border-subtle pb-4 mb-5">
+          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">Macros Registrados</AppText>
+          {isManual && (
+            <Pressable accessibilityRole="button" onPress={resetToGrams}>
+              <AppText className="text-xs font-bold" style={{ color: '#A78BFA' }}>↩ Recalcular</AppText>
+            </Pressable>
+          )}
+        </View>
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+          {macroFields.map((field) => (
+            <View
+              key={field.label}
+              style={{
+                width: '47.5%',
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: isManual ? `${field.color}66` : (isDark ? '#1E1E1E' : '#EBEBEB'),
+                backgroundColor: isDark ? '#111111' : '#F5F5F5',
+                padding: 14,
+              }}
+            >
+              <AppText
+                style={{
+                  fontSize: 11,
+                  fontWeight: '700',
+                  color: field.color,
+                  textTransform: 'uppercase',
+                  letterSpacing: 1,
+                  marginBottom: 4,
+                }}
+              >
+                {field.label}
+              </AppText>
+              <View className="flex-row items-baseline gap-1">
+                <TextInput
+                  style={{
+                    fontSize: 22,
+                    fontWeight: '700',
+                    color: isDark ? '#FFFFFF' : '#111827',
+                    flex: 1,
+                    padding: 0,
+                  }}
+                  cursorColor="#8B5CF6"
+                  keyboardType="decimal-pad"
+                  onChangeText={(v) => handleMacroChange(field.setter, v)}
+                  value={field.value}
+                />
+                <AppText className="text-xs text-text-muted">{field.unit}</AppText>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {isManual && (
+          <AppText className="mt-3 text-[10px] text-center text-text-muted">
+            Valores editados manualmente
+          </AppText>
+        )}
+      </Animated.View>
+
+      {/* Bottom CTA */}
       <Animated.View entering={FadeInDown.delay(200).duration(600)}>
         <Pressable
           accessibilityRole="button"

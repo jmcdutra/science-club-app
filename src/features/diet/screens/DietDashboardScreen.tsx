@@ -1,4 +1,5 @@
-import { CalendarBlank, Drop, ForkKnife, ListChecks, Minus, Notebook, Plus, Scales } from 'phosphor-react-native';
+import Svg, { Circle } from 'react-native-svg';
+import { CaretRight, Drop, Minus, Notebook, Plus } from 'phosphor-react-native';
 import { router, type Href } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -7,17 +8,48 @@ import { AppShell } from '@/src/shared/components/layout/AppShell';
 import { AppText } from '@/src/shared/components/ui/AppText';
 import { useAppTheme } from '@/src/shared/theme/appTheme';
 
-import { DietMealTimelineItem } from '../components/DietMealTimelineItem';
-import { MacroHeroProgress } from '../components/MacroHeroProgress';
 import { useDietStore, useSelectedDietDay } from '../services/diet.store';
 import {
   getAdherence,
   getConsumedMacros,
   getMealLog,
   getMealStatus,
+  getMealTotal,
   getNextMeal,
   getProgressPercent,
 } from '../utils';
+
+const STATUS_COLOR: Record<string, string> = {
+  pending: '#3A3A3A',
+  partial: '#FBBF24',
+  done: '#22C55E',
+  skipped: '#52525B',
+};
+
+function Ring({ size = 44, sw = 4, pct, color }: { size?: number; sw?: number; pct: number; color: string }) {
+  const r = (size - sw) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (Math.min(100, Math.max(0, pct)) / 100) * circ;
+  const cx = size / 2;
+  return (
+    <Svg width={size} height={size}>
+      <Circle cx={cx} cy={cx} r={r} stroke={`${color}22`} strokeWidth={sw} fill="none" />
+      <Circle
+        cx={cx}
+        cy={cx}
+        r={r}
+        stroke={color}
+        strokeWidth={sw}
+        fill="none"
+        strokeDasharray={`${circ} ${circ}`}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        rotation="-90"
+        origin={`${cx}, ${cx}`}
+      />
+    </Svg>
+  );
+}
 
 export function DietDashboardScreen() {
   const { isDark } = useAppTheme();
@@ -27,158 +59,302 @@ export function DietDashboardScreen() {
   const consumed = getConsumedMacros(dayLog);
   const adherence = getAdherence(plan, dayLog);
   const nextMeal = getNextMeal(plan, dayLog);
-  const remainingCalories = plan.targets.calories - consumed.calories;
-  const caloriePercent = getProgressPercent(consumed.calories, plan.targets.calories);
+  const waterPercent = getProgressPercent(dayLog.waterMl, plan.targets.waterMl);
+
+  const cellBg = isDark ? '#111111' : '#F5F5F5';
+  const cellBorder = isDark ? '#1E1E1E' : '#EBEBEB';
+  const dividerColor = isDark ? '#1A1A1A' : '#F0F0F0';
+
+  const macros = [
+    {
+      label: 'Calorias',
+      consumed: Math.round(consumed.calories),
+      target: plan.targets.calories,
+      remaining: Math.max(0, plan.targets.calories - consumed.calories),
+      unit: 'kcal',
+      color: '#8B5CF6',
+      pct: getProgressPercent(consumed.calories, plan.targets.calories),
+      over: consumed.calories > plan.targets.calories,
+    },
+    {
+      label: 'Proteína',
+      consumed: Math.round(consumed.protein),
+      target: plan.targets.protein,
+      remaining: Math.max(0, plan.targets.protein - consumed.protein),
+      unit: 'g',
+      color: '#38BDF8',
+      pct: getProgressPercent(consumed.protein, plan.targets.protein),
+      over: consumed.protein > plan.targets.protein,
+    },
+    {
+      label: 'Carboidratos',
+      consumed: Math.round(consumed.carbs),
+      target: plan.targets.carbs,
+      remaining: Math.max(0, plan.targets.carbs - consumed.carbs),
+      unit: 'g',
+      color: '#F59E0B',
+      pct: getProgressPercent(consumed.carbs, plan.targets.carbs),
+      over: consumed.carbs > plan.targets.carbs,
+    },
+    {
+      label: 'Gorduras',
+      consumed: Math.round(consumed.fat),
+      target: plan.targets.fat,
+      remaining: Math.max(0, plan.targets.fat - consumed.fat),
+      unit: 'g',
+      color: '#FB7185',
+      pct: getProgressPercent(consumed.fat, plan.targets.fat),
+      over: consumed.fat > plan.targets.fat,
+    },
+  ];
 
   return (
-    <AppShell title="SUA DIETA" largeTitle contentClassName="pb-36">
-      {/* Daily Summary Hero */}
-      <Animated.View entering={FadeInDown.delay(200).duration(800)} className="mb-14">
-        <View className="flex-row items-end justify-between border-b border-border-subtle pb-4 mb-8">
-          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">Resumo do Dia</AppText>
-          <View className="flex-row items-center gap-1.5">
-            <AppText className="text-text-main font-bold text-lg">{adherence}%</AppText>
-            <AppText className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Aderência</AppText>
-          </View>
-        </View>
+    <AppShell title="Sua Dieta" contentClassName="pb-36">
 
-        <View className="flex-row items-start justify-between gap-4 mb-10">
-          <View className="flex-1">
-            <AppText className="font-heading text-7xl font-bold text-text-main tracking-tighter leading-none">
-              {Math.round(consumed.calories)}
-            </AppText>
-            <AppText className="mt-3 text-base font-medium text-text-muted">
-              kcal de {plan.targets.calories} consumidas
-            </AppText>
-          </View>
-          <View className="items-end">
-            <AppText className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">
-              {remainingCalories >= 0 ? 'Restam' : 'Passou'}
-            </AppText>
-            <AppText className="text-4xl font-bold text-brand-secondary tracking-tight">
-              {Math.abs(Math.round(remainingCalories))}
-            </AppText>
-          </View>
-        </View>
-
-        <View className="mb-10">
-          <MacroHeroProgress 
-            protein={{ value: consumed.protein, target: plan.targets.protein }}
-            carbs={{ value: consumed.carbs, target: plan.targets.carbs }}
-            fat={{ value: consumed.fat, target: plan.targets.fat }}
-          />
-        </View>
-
-        <View className="h-1.5 rounded-full bg-border-subtle/30 overflow-hidden">
-          <View className="h-full rounded-full bg-brand-primary" style={{ width: `${Math.min(100, caloriePercent)}%` }} />
-        </View>
-      </Animated.View>
-
-      {/* Next Meal Hero */}
-      <Animated.View entering={FadeInDown.delay(400).duration(800)} className="mb-14">
-        <View className="flex-row items-end justify-between border-b border-border-subtle pb-4 mb-8">
-          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">Próxima Refeição</AppText>
-          <AppText className="text-text-main font-bold text-base">{nextMeal.time}</AppText>
-        </View>
-
+      {/* ─── PLANO BANNER ─────────────────────── */}
+      <Animated.View entering={FadeInDown.delay(100).duration(600)} className="mb-6">
         <Pressable
           accessibilityRole="button"
-          className="flex-row items-center justify-between bg-bg-surface p-6 rounded-[32px] border border-border-subtle shadow-sm"
-          onPress={() => router.push(`/(app)/diet/meals/${nextMeal.id}` as Href)}
+          style={{
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: cellBorder,
+            backgroundColor: cellBg,
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            flexDirection: 'row',
+            alignItems: 'center',
+          }}
+          onPress={() => router.push('/(app)/diet/plan' as Href)}
         >
-          <View className="flex-1">
-            <AppText className="font-heading text-3xl font-bold text-text-main mb-1.5 leading-tight">{nextMeal.name}</AppText>
-            <AppText className="text-base text-text-muted leading-relaxed">
-              {nextMeal.foods.map((food) => food.name).slice(0, 2).join(' + ')}
-              {nextMeal.foods.length > 2 && '...'}
+          <View style={{ flex: 1 }}>
+            <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em] mb-1">
+              {plan.professional} · v{plan.version}
+            </AppText>
+            <AppText className="text-base font-bold text-text-main">{plan.name}</AppText>
+            <AppText className="text-xs text-text-muted mt-0.5" numberOfLines={1}>
+              {plan.objective}
             </AppText>
           </View>
-          <View className="w-16 h-16 rounded-full bg-brand-primary items-center justify-center shadow-lg shadow-brand-primary/40 ml-4">
-             <ForkKnife size={28} color="#FFFFFF" weight="fill" />
-          </View>
+          <Notebook color="#A78BFA" size={22} weight="duotone" style={{ marginLeft: 12 }} />
         </Pressable>
       </Animated.View>
 
-      {/* Water & Utilities */}
-      <Animated.View entering={FadeInDown.delay(600).duration(800)} className="mb-14">
-        <View className="bg-bg-surface rounded-[32px] border border-border-subtle p-6 mb-4">
-          <View className="flex-row items-center justify-between mb-6">
-            <View className="flex-row items-center gap-4">
-              <View className="h-12 w-12 items-center justify-center rounded-full bg-cyan-300/10">
-                <Drop color="#67E8F9" size={24} weight="duotone" />
-              </View>
-              <View>
-                <AppText className="text-lg font-bold text-text-main">Hidratação</AppText>
-                <AppText className="text-sm text-text-muted">{dayLog.waterMl}ml de {plan.targets.waterMl}ml</AppText>
-              </View>
-            </View>
-          </View>
-
-          <View className="flex-row gap-3">
-            <Pressable 
-              className="flex-1 h-14 flex-row items-center justify-center bg-cyan-300/10 rounded-2xl gap-2"
-              onPress={() => addWater(250)}
+      {/* ─── METAS DO DIA ─────────────────────── */}
+      <Animated.View entering={FadeInDown.delay(200).duration(600)} className="mb-8">
+        <View className="flex-row items-center justify-between border-b border-border-subtle pb-4 mb-5">
+          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">
+            Metas de Hoje
+          </AppText>
+          <View
+            style={{
+              backgroundColor: adherence >= 80 ? '#22C55E18' : '#F59E0B18',
+              borderRadius: 99,
+              paddingHorizontal: 9,
+              paddingVertical: 4,
+            }}
+          >
+            <AppText
+              className="text-[10px] font-bold uppercase tracking-wide"
+              style={{ color: adherence >= 80 ? '#22C55E' : '#F59E0B' }}
             >
-              <Plus color="#22D3EE" size={18} weight="bold" />
-              <AppText className="text-sm font-bold text-cyan-500">250ml</AppText>
-            </Pressable>
-            <Pressable 
-              className="flex-1 h-14 flex-row items-center justify-center bg-cyan-300/10 rounded-2xl gap-2"
-              onPress={() => addWater(500)}
-            >
-              <Plus color="#22D3EE" size={18} weight="bold" />
-              <AppText className="text-sm font-bold text-cyan-500">500ml</AppText>
-            </Pressable>
-            <Pressable 
-              className="w-14 h-14 items-center justify-center bg-red-400/10 rounded-2xl"
-              onPress={() => addWater(-250)}
-            >
-              <Minus color="#F87171" size={18} weight="bold" />
-            </Pressable>
+              {adherence}% aderência
+            </AppText>
           </View>
         </View>
 
-        <View className="flex-row gap-4">
-          {[
-            { label: 'Plano', icon: Notebook, href: '/(app)/diet/plan' },
-            { label: 'Balança', icon: Scales, href: '/(app)/diet/log' },
-            { label: 'Histórico', icon: ListChecks, href: '/(app)/diet/history' },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <Pressable
-                key={item.label}
-                accessibilityRole="button"
-                className="flex-1 h-24 items-center justify-center rounded-[28px] bg-bg-surface border border-border-subtle"
-                onPress={() => router.push(item.href as Href)}
-              >
-                <Icon color="#A78BFA" size={24} weight="duotone" />
-                <AppText className="mt-2 text-xs font-bold uppercase tracking-widest text-text-main">{item.label}</AppText>
-              </Pressable>
-            );
-          })}
+        {/* 2×2 macro ring grid */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+          {macros.map((macro) => (
+            <View
+              key={macro.label}
+              style={{
+                width: '47.5%',
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: cellBorder,
+                backgroundColor: cellBg,
+                padding: 14,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
+                <AppText className="text-[11px] font-bold uppercase tracking-wide text-text-muted">
+                  {macro.label}
+                </AppText>
+                <Ring size={38} sw={3.5} pct={macro.pct} color={macro.color} />
+              </View>
+
+              {macro.over ? (
+                <AppText className="text-xl font-bold" style={{ color: '#FB7185', letterSpacing: -0.5 }}>
+                  Meta!
+                </AppText>
+              ) : (
+                <AppText className="text-xl font-bold text-text-main" style={{ letterSpacing: -0.5 }}>
+                  {Math.round(macro.remaining)}
+                  <AppText className="text-xs font-normal text-text-muted"> {macro.unit}</AppText>
+                </AppText>
+              )}
+              <AppText className="text-[11px] text-text-muted mt-0.5">
+                {macro.consumed}/{macro.target}{macro.unit}
+              </AppText>
+            </View>
+          ))}
         </View>
       </Animated.View>
 
-      {/* Full Timeline */}
-      <Animated.View entering={FadeInDown.delay(800).duration(800)}>
-        <View className="flex-row items-end justify-between border-b border-border-subtle pb-4 mb-2">
-          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">Timeline de hoje</AppText>
+      {/* ─── ÁGUA ─────────────────────────────── */}
+      <Animated.View entering={FadeInDown.delay(340).duration(600)} className="mb-8">
+        <View
+          style={{
+            borderRadius: 18,
+            borderWidth: 1,
+            borderColor: cellBorder,
+            backgroundColor: cellBg,
+            padding: 14,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <Drop color="#22D3EE" size={16} weight="duotone" />
+            <AppText className="text-sm font-bold text-text-main" style={{ flex: 1 }}>Hidratação</AppText>
+            <AppText className="text-sm font-bold text-cyan-400">
+              {dayLog.waterMl}
+              <AppText className="font-normal text-text-muted"> / {plan.targets.waterMl}ml</AppText>
+            </AppText>
+          </View>
+
+          <View className="h-1.5 rounded-full bg-cyan-400/15 overflow-hidden mb-3">
+            <View
+              className="h-full rounded-full bg-cyan-400"
+              style={{ width: `${Math.min(100, waterPercent)}%` }}
+            />
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {[250, 500].map((ml) => (
+              <Pressable
+                key={ml}
+                className="flex-1 h-10 flex-row items-center justify-center rounded-xl bg-cyan-400/10 gap-1.5"
+                onPress={() => addWater(ml)}
+              >
+                <Plus color="#22D3EE" size={13} weight="bold" />
+                <AppText className="text-sm font-bold text-cyan-500">{ml}ml</AppText>
+              </Pressable>
+            ))}
+            <Pressable
+              className="w-10 h-10 items-center justify-center rounded-xl bg-red-400/10"
+              onPress={() => addWater(-250)}
+            >
+              <Minus color="#F87171" size={13} weight="bold" />
+            </Pressable>
+          </View>
+        </View>
+      </Animated.View>
+
+      {/* ─── LOG DE REFEIÇÕES ─────────────────── */}
+      <Animated.View entering={FadeInDown.delay(460).duration(600)} className="mb-8">
+        <View className="flex-row items-center justify-between border-b border-border-subtle pb-4 mb-1">
+          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">
+            Refeições
+          </AppText>
           <AppText className="text-xs text-text-muted">{plan.meals.length} refeições</AppText>
         </View>
 
         <View>
-          {plan.meals.map((meal, index) => {
-            const status = getMealStatus(meal, getMealLog(dayLog, meal.id));
+          {plan.meals.map((meal, mealIdx) => {
+            const mealLog = getMealLog(dayLog, meal.id);
+            const status = getMealStatus(meal, mealLog);
+            const mealTotal = getMealTotal(meal);
+            const isNext = meal.id === nextMeal.id;
+            const isLast = mealIdx === plan.meals.length - 1;
+            const showFoods = isNext || status === 'done' || status === 'partial';
+
             return (
-              <DietMealTimelineItem
+              <View
                 key={meal.id}
-                active={meal.id === nextMeal.id}
-                meal={meal}
-                status={status}
-                isLast={index === plan.meals.length - 1}
-                onPress={() => router.push(`/(app)/diet/meals/${meal.id}` as Href)}
-              />
+                style={!isLast ? { borderBottomWidth: 1, borderBottomColor: dividerColor } : undefined}
+              >
+                {/* Meal row */}
+                <Pressable
+                  accessibilityRole="button"
+                  style={{ paddingVertical: 14, flexDirection: 'row', alignItems: 'center' }}
+                  onPress={() => router.push(`/(app)/diet/meals/${meal.id}` as Href)}
+                >
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: STATUS_COLOR[status] ?? '#3A3A3A',
+                      marginRight: 12,
+                    }}
+                  />
+                  <AppText className="text-xs text-text-muted" style={{ width: 42 }}>
+                    {meal.time}
+                  </AppText>
+                  <AppText
+                    className={`flex-1 text-base font-bold ${isNext ? 'text-brand-secondary' : 'text-text-main'}`}
+                  >
+                    {meal.name}
+                  </AppText>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {isNext && (
+                      <View
+                        style={{
+                          backgroundColor: '#8B5CF618',
+                          borderRadius: 99,
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                        }}
+                      >
+                        <AppText className="text-[10px] font-bold text-brand-secondary uppercase tracking-wide">
+                          Agora
+                        </AppText>
+                      </View>
+                    )}
+                    <AppText className="text-xs text-text-muted">
+                      {Math.round(mealTotal.calories)} kcal
+                    </AppText>
+                    <CaretRight color={isDark ? '#333' : '#CCC'} size={13} weight="bold" />
+                  </View>
+                </Pressable>
+
+                {/* Food items preview */}
+                {showFoods && meal.foods.length > 0 && (
+                  <View style={{ paddingLeft: 56, paddingBottom: 10 }}>
+                    {meal.foods.slice(0, 3).map((food) => (
+                      <View
+                        key={food.id}
+                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 3 }}
+                      >
+                        <View
+                          style={{
+                            width: 4,
+                            height: 4,
+                            borderRadius: 2,
+                            backgroundColor: isDark ? '#2E2E2E' : '#DADADA',
+                            marginRight: 8,
+                          }}
+                        />
+                        <AppText className="text-sm text-text-muted flex-1" numberOfLines={1}>
+                          {food.name}
+                        </AppText>
+                        <AppText className="text-xs text-text-muted">{food.displayQuantity}</AppText>
+                        <AppText
+                          className="text-xs font-bold text-text-muted"
+                          style={{ marginLeft: 10, minWidth: 48, textAlign: 'right' }}
+                        >
+                          {food.nutrition.calories} kcal
+                        </AppText>
+                      </View>
+                    ))}
+                    {meal.foods.length > 3 && (
+                      <AppText className="text-xs text-text-muted mt-1.5">
+                        +{meal.foods.length - 3} alimentos
+                      </AppText>
+                    )}
+                  </View>
+                )}
+              </View>
             );
           })}
         </View>

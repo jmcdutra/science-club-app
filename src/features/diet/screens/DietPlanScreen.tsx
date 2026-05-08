@@ -41,7 +41,7 @@ export function DietPlanScreen() {
           <AppText className="text-text-muted text-xs font-bold tracking-[0.3em] uppercase mb-3">
             {plan.professional}
           </AppText>
-          <AppText className="font-heading text-5xl font-bold text-text-main tracking-tight leading-[1.05]">
+          <AppText className="font-heading text-3xl font-bold text-text-main">
             {plan.name}
           </AppText>
           <AppText className="mt-3 text-base leading-relaxed text-text-muted">

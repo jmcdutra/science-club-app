@@ -73,7 +73,7 @@ export function DietFoodRow({ food, log, onLog, onSwap, isLast }: DietFoodRowPro
               onPress={onLog}
             >
               <AppText className={cn("text-xs font-bold uppercase tracking-widest", hasLog ? "text-text-main" : "text-white")}>
-                {hasLog ? 'Editar' : 'Pesar'}
+                {hasLog ? 'Editar' : 'Registrar'}
               </AppText>
             </Pressable>
 

@@ -20,16 +20,15 @@ import {
   SignOut,
   TrendUp,
   Trophy,
-  UserCircle,
 } from 'phosphor-react-native';
 import { router, type Href } from 'expo-router';
 import { Alert, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
-import { AppButton } from '@/src/shared/components/ui/AppButton';
-import { AppScreen } from '@/src/shared/components/ui/AppScreen';
+import { AppShell } from '@/src/shared/components/layout/AppShell';
 import { AppText } from '@/src/shared/components/ui/AppText';
+import { useAppTheme } from '@/src/shared/theme/appTheme';
 import { cn } from '@/src/shared/utils/cn';
 
 import { ProfileActionRow } from '../components/ProfileActionRow';
@@ -40,6 +39,7 @@ import { useProfileStore } from '../services/profile.store';
 import { getProfileStatus } from '../utils';
 
 export function ProfileDashboardScreen() {
+  const { isDark } = useAppTheme();
   const profile = useProfileStore((state) => state.profile);
   const clearSession = useAuthStore((state) => state.clearSession);
   const status = getProfileStatus(profile.plan.status);
@@ -58,116 +58,198 @@ export function ProfileDashboardScreen() {
     ]);
   };
 
+  const cellBg = isDark ? '#111111' : '#F5F5F5';
+  const cellBorder = isDark ? '#1E1E1E' : '#EBEBEB';
+
   return (
-    <AppScreen contentClassName="px-5 pb-36 pt-10">
-      <Animated.View entering={FadeInDown.duration(420)}>
-        <View className="mb-8 flex-row items-start justify-between gap-4">
-          <View className="flex-1">
-            <AppText className="text-sm text-text-muted">Science Club</AppText>
-            <AppText className="mt-2 text-5xl font-semibold leading-tight text-text-main">Perfil</AppText>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            className="rounded-2xl border border-border-subtle bg-bg-surface px-4 py-3"
-            onPress={() => router.push('/(app)/profile/preferences' as Href)}
-          >
-            <Gear color="#A78BFA" size={23} weight="duotone" />
-          </Pressable>
-        </View>
-
-        <View className="mb-6 overflow-hidden rounded-[32px] border border-brand-primary/30 bg-bg-surface p-5">
-          <View className="absolute -right-16 -top-20 h-48 w-48 rounded-full bg-brand-primary/20" />
-          <View className="flex-row items-start gap-5">
+    <AppShell
+      title="Perfil"
+      contentClassName="pb-36"
+      rightAction={
+        <Pressable
+          accessibilityRole="button"
+          className="h-10 w-10 items-center justify-center rounded-full bg-bg-surface border border-border-subtle"
+          onPress={() => router.push('/(app)/profile/preferences' as Href)}
+        >
+          <Gear color="#A78BFA" size={20} weight="duotone" />
+        </Pressable>
+      }
+    >
+      {/* ─── HERO ─────────────────────────────── */}
+      <Animated.View entering={FadeInDown.delay(80).duration(600)} className="mb-8">
+        <View
+          style={{
+            borderRadius: 24,
+            borderWidth: 1,
+            borderColor: cellBorder,
+            backgroundColor: cellBg,
+            padding: 20,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 18, marginBottom: 20 }}>
             <ProfileAvatar name={profile.name} variant={profile.avatarVariant} />
-            <View className="flex-1">
-              <View className={cn('mb-3 self-start rounded-full border px-3 py-1.5', status.bg, status.border)}>
-                <AppText className={cn('text-xs font-semibold', status.text)}>{status.label}</AppText>
+            <View style={{ flex: 1, paddingTop: 4 }}>
+              <View className={cn('mb-2 self-start rounded-full border px-3 py-1', status.bg, status.border)}>
+                <AppText className={cn('text-[10px] font-bold uppercase tracking-wide', status.text)}>
+                  {status.label}
+                </AppText>
               </View>
-              <AppText className="text-3xl font-semibold leading-tight text-text-main">{profile.name}</AppText>
-              <AppText className="mt-2 text-sm font-semibold text-brand-secondary">ID {profile.id}</AppText>
-              <AppText className="mt-2 text-sm leading-snug text-text-muted">{profile.plan.name}</AppText>
+              <AppText className="text-2xl font-bold leading-tight text-text-main">
+                {profile.name}
+              </AppText>
+              <AppText className="mt-1 text-xs font-bold text-brand-secondary">
+                {profile.id}
+              </AppText>
+              <AppText className="mt-1 text-sm text-text-muted">{profile.plan.name}</AppText>
             </View>
           </View>
 
-          <View className="mt-7 flex-row gap-3">
-            <View className="flex-1 rounded-[22px] border border-border-subtle bg-bg-base p-4">
-              <CalendarCheck color="#A78BFA" size={21} weight="duotone" />
-              <AppText className="mt-3 text-xs font-semibold text-text-muted">Próxima reavaliação</AppText>
-              <AppText className="mt-1 text-base font-semibold text-text-main">{profile.plan.nextCheckIn}</AppText>
+          {/* Metric pills */}
+          <View style={{ flexDirection: 'row', gap: 10, borderTopWidth: 1, borderTopColor: isDark ? '#1E1E1E' : '#EBEBEB', paddingTop: 16 }}>
+            <View style={{ flex: 1, backgroundColor: isDark ? '#161616' : '#EFEFEF', borderRadius: 16, padding: 14 }}>
+              <CalendarCheck color="#A78BFA" size={18} weight="duotone" />
+              <AppText className="mt-2.5 text-[11px] font-bold uppercase tracking-wide text-text-muted">
+                Próxima reavaliação
+              </AppText>
+              <AppText className="mt-1 text-sm font-bold text-text-main">{profile.plan.nextCheckIn}</AppText>
             </View>
-            <View className="flex-1 rounded-[22px] border border-border-subtle bg-bg-base p-4">
-              <Medal color="#A78BFA" size={21} weight="duotone" />
-              <AppText className="mt-3 text-xs font-semibold text-text-muted">Ciclo atual</AppText>
-              <AppText className="mt-1 text-base font-semibold text-text-main">{profile.plan.mesocycle}</AppText>
+            <View style={{ flex: 1, backgroundColor: isDark ? '#161616' : '#EFEFEF', borderRadius: 16, padding: 14 }}>
+              <Medal color="#A78BFA" size={18} weight="duotone" />
+              <AppText className="mt-2.5 text-[11px] font-bold uppercase tracking-wide text-text-muted">
+                Ciclo atual
+              </AppText>
+              <AppText className="mt-1 text-sm font-bold text-text-main">{profile.plan.mesocycle}</AppText>
             </View>
           </View>
         </View>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(80).duration(420)} className="mb-7">
-        <View className="mb-4 flex-row items-center justify-between">
-          <AppText className="text-2xl font-semibold text-text-main">Seu ciclo atual</AppText>
-          <AppText className="text-sm text-text-muted">{profile.plan.objective}</AppText>
+      {/* ─── CICLO ATUAL ──────────────────────── */}
+      <Animated.View entering={FadeInDown.delay(140).duration(600)} className="mb-8">
+        <View className="flex-row items-center justify-between border-b border-border-subtle pb-4 mb-4">
+          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">
+            Ciclo Atual
+          </AppText>
+          <AppText className="text-xs text-text-muted">{profile.plan.objective}</AppText>
         </View>
-        <View className="rounded-[28px] border border-border-subtle bg-bg-surface p-5">
-          <View className="mb-5 flex-row gap-3">
+
+        <View
+          style={{ borderRadius: 20, borderWidth: 1, borderColor: cellBorder, backgroundColor: cellBg, padding: 16 }}
+        >
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
             <PlanMiniCard icon={Barbell} label="Treino" value={profile.currentWorkout} />
             <PlanMiniCard icon={ForkKnife} label="Dieta" value={profile.currentDiet} />
           </View>
-          <View className="gap-4">
-            <ProfileInfoRow icon={UserCircle} label="Responsável" value={`${profile.coach.name} · ${profile.coach.role}`} />
-            <ProfileInfoRow icon={CalendarCheck} label="Contrato" value={`${profile.plan.startDate} até ${profile.plan.renewalDate}`} />
-            <ProfileInfoRow icon={Trophy} label="Objetivo oficial" value={profile.plan.objective} />
+          <View className="gap-3">
+            <ProfileInfoRow icon={Trophy} label="Objetivo" value={profile.plan.objective} />
+            <ProfileInfoRow
+              icon={CalendarCheck}
+              label="Contrato"
+              value={`${profile.plan.startDate} – ${profile.plan.renewalDate}`}
+            />
           </View>
         </View>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(120).duration(420)} className="mb-7">
-        <View className="mb-4 flex-row items-center justify-between">
-          <AppText className="text-2xl font-semibold text-text-main">Resumo do aluno</AppText>
-          <AppText className="text-sm text-brand-secondary">{profile.metrics.adherence}% aderência</AppText>
+      {/* ─── RESUMO ───────────────────────────── */}
+      <Animated.View entering={FadeInDown.delay(180).duration(600)} className="mb-8">
+        <View className="flex-row items-center justify-between border-b border-border-subtle pb-4 mb-4">
+          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">
+            Desempenho
+          </AppText>
+          <AppText className="text-xs font-bold text-brand-secondary">
+            {profile.metrics.adherence}% aderência
+          </AppText>
         </View>
-        <View className="mb-3 flex-row gap-3">
-          <ProfileMetricCard caption="concluídos" icon={Barbell} label="treinos" value={String(profile.metrics.workoutsDone)} />
-          <ProfileMetricCard caption="registradas" icon={ClipboardText} label="séries válidas" tone="success" value={String(profile.metrics.validSets)} />
+
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+          <ProfileMetricCard
+            caption="concluídos"
+            icon={Barbell}
+            label="treinos"
+            value={String(profile.metrics.workoutsDone)}
+          />
+          <ProfileMetricCard
+            caption="registradas"
+            icon={ClipboardText}
+            label="séries válidas"
+            tone="success"
+            value={String(profile.metrics.validSets)}
+          />
         </View>
-        <View className="flex-row gap-3">
-          <ProfileMetricCard caption="último bloco" icon={TrendUp} label="volume" tone="neutral" value={profile.metrics.totalVolume} />
-          <ProfileMetricCard caption="cargas/reps" icon={Trophy} label="progressões" tone="warning" value={String(profile.metrics.progressions)} />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <ProfileMetricCard
+            caption="último bloco"
+            icon={TrendUp}
+            label="volume"
+            tone="neutral"
+            value={profile.metrics.totalVolume}
+          />
+          <ProfileMetricCard
+            caption="cargas/reps"
+            icon={Trophy}
+            label="progressões"
+            tone="warning"
+            value={String(profile.metrics.progressions)}
+          />
         </View>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(160).duration(420)} className="mb-7">
-        <AppText className="mb-4 text-2xl font-semibold text-text-main">Dados oficiais</AppText>
-        <View className="rounded-[28px] border border-border-subtle bg-bg-surface p-5">
-          <View className="mb-4 rounded-2xl border border-brand-primary/20 bg-brand-primary/10 p-4">
-            <AppText className="text-sm font-semibold text-brand-secondary">Somente leitura</AppText>
-            <AppText className="mt-1 text-sm leading-snug text-text-soft">
-              Medidas, objetivo e restrições são atualizados pela equipe nas avaliações.
+      {/* ─── DADOS OFICIAIS ───────────────────── */}
+      <Animated.View entering={FadeInDown.delay(220).duration(600)} className="mb-8">
+        <View className="flex-row items-center border-b border-border-subtle pb-4 mb-4">
+          <AppText className="flex-1 text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">
+            Dados Físicos
+          </AppText>
+          <View className="rounded-full bg-brand-primary/10 px-3 py-1">
+            <AppText className="text-[10px] font-bold text-brand-secondary uppercase tracking-wide">
+              Somente leitura
             </AppText>
           </View>
-          <View className="mb-4 flex-row gap-3">
+        </View>
+
+        <View style={{ borderRadius: 20, borderWidth: 1, borderColor: cellBorder, backgroundColor: cellBg, padding: 16 }}>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
             <BodyMiniCard icon={Scales} label="Peso" value={`${profile.body.weightKg}kg`} />
             <BodyMiniCard icon={Ruler} label="Altura" value={`${profile.body.heightCm}cm`} />
           </View>
-          <View className="mb-4 flex-row gap-3">
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
             <BodyMiniCard icon={Heartbeat} label="BF" value={`${profile.body.bodyFatPercent}%`} />
             <BodyMiniCard icon={IdentificationCard} label="Idade" value={`${profile.body.age} anos`} />
           </View>
+
           <ProfileInfoRow icon={Note} label="Observações" value={profile.observations} />
-          <View className="mt-4 flex-row flex-wrap gap-2">
-            {profile.restrictions.map((restriction) => (
-              <View key={restriction} className="rounded-full border border-border-subtle bg-bg-base px-3 py-1.5">
-                <AppText className="text-xs font-semibold text-text-soft">{restriction}</AppText>
-              </View>
-            ))}
-          </View>
+
+          {profile.restrictions.length > 0 && (
+            <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {profile.restrictions.map((r) => (
+                <View
+                  key={r}
+                  style={{
+                    borderRadius: 99,
+                    borderWidth: 1,
+                    borderColor: isDark ? '#2A2A2A' : '#E0E0E0',
+                    backgroundColor: isDark ? '#1A1A1A' : '#F0F0F0',
+                    paddingHorizontal: 12,
+                    paddingVertical: 4,
+                  }}
+                >
+                  <AppText className="text-xs font-bold text-text-muted">{r}</AppText>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(200).duration(420)} className="mb-7">
-        <AppText className="mb-4 text-2xl font-semibold text-text-main">Contato e conta</AppText>
-        <View className="gap-3">
+      {/* ─── CONTATO E CONTA ──────────────────── */}
+      <Animated.View entering={FadeInDown.delay(260).duration(600)} className="mb-8">
+        <View className="border-b border-border-subtle pb-4 mb-4">
+          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">
+            Contato e Conta
+          </AppText>
+        </View>
+        <View style={{ gap: 10 }}>
           <ProfileActionRow
             description={`${profile.phone} · ${profile.city}`}
             icon={Phone}
@@ -179,7 +261,12 @@ export function ProfileDashboardScreen() {
             icon={EnvelopeSimple}
             title="Email de acesso"
             value="fixo"
-            onPress={() => Alert.alert('Email de acesso', 'O email é o identificador da sua conta. Peça alteração ao suporte.')}
+            onPress={() =>
+              Alert.alert(
+                'Email de acesso',
+                'O email é o identificador da sua conta. Peça alteração ao suporte.',
+              )
+            }
           />
           <ProfileActionRow
             description="Notificações, privacidade e canal preferido."
@@ -190,73 +277,113 @@ export function ProfileDashboardScreen() {
         </View>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(240).duration(420)} className="mb-7">
-        <AppText className="mb-4 text-2xl font-semibold text-text-main">Equipe Science Club</AppText>
-        <View className="rounded-[28px] border border-border-subtle bg-bg-surface p-5">
-          <View className="mb-5 flex-row items-center gap-4">
-            <View className="h-14 w-14 items-center justify-center rounded-2xl bg-brand-primary/12">
-              <ShieldCheck color="#A78BFA" size={28} weight="duotone" />
+      {/* ─── EQUIPE ───────────────────────────── */}
+      <Animated.View entering={FadeInDown.delay(300).duration(600)} className="mb-8">
+        <View className="border-b border-border-subtle pb-4 mb-4">
+          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">
+            Equipe Science Club
+          </AppText>
+        </View>
+
+        <View
+          style={{ borderRadius: 20, borderWidth: 1, borderColor: cellBorder, backgroundColor: cellBg, padding: 16 }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+            <View
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 16,
+                backgroundColor: '#8B5CF610',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <ShieldCheck color="#A78BFA" size={24} weight="duotone" />
             </View>
-            <View className="flex-1">
-              <AppText className="text-xl font-semibold text-text-main">{profile.coach.name}</AppText>
-              <AppText className="mt-1 text-sm text-text-muted">{profile.coach.responseTime}</AppText>
+            <View style={{ flex: 1 }}>
+              <AppText className="text-base font-bold text-text-main">{profile.coach.name}</AppText>
+              <AppText className="mt-0.5 text-sm text-text-muted">{profile.coach.responseTime}</AppText>
             </View>
           </View>
-          <AppButton
-            variant="secondary"
-            leftIcon={<ChatCircleText color="#A78BFA" size={20} weight="bold" />}
-            onPress={() => Alert.alert('Mensagem enviada', 'Este é um mock. A mensagem real será integrada ao chat/suporte depois.')}
+          <Pressable
+            accessibilityRole="button"
+            style={{
+              minHeight: 48,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: isDark ? '#2A2A2A' : '#E0E0E0',
+              backgroundColor: isDark ? '#1A1A1A' : '#EFEFEF',
+            }}
+            onPress={() =>
+              Alert.alert(
+                'Em breve',
+                'O chat com a equipe será integrado em uma próxima versão.',
+              )
+            }
           >
-            Enviar mensagem
-          </AppButton>
+            <ChatCircleText color="#A78BFA" size={18} weight="duotone" />
+            <AppText className="text-sm font-bold text-text-main">Enviar mensagem</AppText>
+          </Pressable>
         </View>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(280).duration(420)} className="mb-8 gap-3">
-        <AppText className="mb-1 text-2xl font-semibold text-text-main">Documentos</AppText>
-        <ProfileActionRow
-          description="Contrato, plano, exames e termos vinculados."
-          icon={FileText}
-          title="Abrir documentos"
-          value={`${profile.documents.length}`}
-          onPress={() => router.push('/(app)/profile/documents' as Href)}
-        />
-        <ProfileActionRow
-          description="Ajuda com acesso, plano ou dúvidas técnicas."
-          icon={Bell}
-          title="Suporte"
-          onPress={() => Alert.alert('Suporte', 'Pedido de suporte registrado no mock.')}
-        />
-        <ProfileActionRow
-          destructive
-          description="Encerrar sessão neste aparelho."
-          icon={SignOut}
-          title="Sair da conta"
-          onPress={handleSignOut}
-        />
+      {/* ─── DOCUMENTOS ───────────────────────── */}
+      <Animated.View entering={FadeInDown.delay(340).duration(600)} className="mb-8">
+        <View className="border-b border-border-subtle pb-4 mb-4">
+          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">
+            Documentos e Suporte
+          </AppText>
+        </View>
+        <View style={{ gap: 10 }}>
+          <ProfileActionRow
+            description="Contrato, plano, exames e termos vinculados."
+            icon={FileText}
+            title="Abrir documentos"
+            value={`${profile.documents.length}`}
+            onPress={() => router.push('/(app)/profile/documents' as Href)}
+          />
+          <ProfileActionRow
+            description="Ajuda com acesso, plano ou dúvidas técnicas."
+            icon={Bell}
+            title="Suporte"
+            onPress={() => Alert.alert('Suporte', 'Pedido de suporte registrado.')}
+          />
+          <ProfileActionRow
+            destructive
+            description="Encerrar sessão neste aparelho."
+            icon={SignOut}
+            title="Sair da conta"
+            onPress={handleSignOut}
+          />
+        </View>
       </Animated.View>
 
       <AppText className="pb-3 text-center text-xs text-text-muted">Science Club App · v1.0.0</AppText>
-    </AppScreen>
+    </AppShell>
   );
 }
 
 function PlanMiniCard({ icon: Icon, label, value }: { icon: typeof Barbell; label: string; value: string }) {
   return (
-    <View className="flex-1 rounded-[22px] border border-border-subtle bg-bg-base p-4">
-      <Icon color="#A78BFA" size={22} weight="duotone" />
-      <AppText className="mt-3 text-xs font-semibold text-text-muted">{label}</AppText>
-      <AppText className="mt-1 text-sm font-semibold leading-snug text-text-main">{value}</AppText>
+    <View className="flex-1 rounded-[18px] border border-border-subtle bg-bg-base p-3.5">
+      <Icon color="#A78BFA" size={18} weight="duotone" />
+      <AppText className="mt-2.5 text-[11px] font-bold uppercase tracking-wide text-text-muted">{label}</AppText>
+      <AppText className="mt-1 text-sm font-bold leading-snug text-text-main">{value}</AppText>
     </View>
   );
 }
 
 function BodyMiniCard({ icon: Icon, label, value }: { icon: typeof Scales; label: string; value: string }) {
   return (
-    <View className="flex-1 rounded-[20px] border border-border-subtle bg-bg-base p-4">
-      <Icon color="#C4C4CC" size={20} weight="duotone" />
-      <AppText className="mt-2 text-xs font-semibold text-text-muted">{label}</AppText>
-      <AppText className="mt-1 text-xl font-semibold text-text-main">{value}</AppText>
+    <View className="flex-1 rounded-[18px] border border-border-subtle bg-bg-base p-3.5">
+      <Icon color="#A78BFA" size={18} weight="duotone" />
+      <AppText className="mt-2.5 text-[11px] font-bold uppercase tracking-wide text-text-muted">{label}</AppText>
+      <AppText className="mt-1 text-xl font-bold text-text-main">{value}</AppText>
     </View>
   );
 }

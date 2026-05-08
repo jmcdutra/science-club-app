@@ -87,7 +87,7 @@ export function DietHistoryScreen() {
 
         <View className="flex-row items-start justify-between gap-4 mb-10">
           <View className="flex-1">
-            <AppText className="font-heading text-5xl font-bold text-text-main tracking-tighter leading-none">
+            <AppText className="font-heading text-3xl font-bold text-text-main tracking-tighter leading-none">
               {Math.round(consumed.calories)}
             </AppText>
             <AppText className="mt-3 text-base text-text-muted">kcal consumidas</AppText>
@@ -110,6 +110,12 @@ export function DietHistoryScreen() {
            </View>
            <View className="flex-1 min-w-[120px]">
              <MacroProgress label="Carbos" value={consumed.carbs} target={plan.targets.carbs} tone="carbs" />
+           </View>
+           <View className="flex-1 min-w-[120px]">
+             <MacroProgress label="Gorduras" value={consumed.fat} target={plan.targets.fat} tone="fat" />
+           </View>
+           <View className="flex-1 min-w-[120px]">
+             <MacroProgress label="Calorias" value={consumed.calories} target={plan.targets.calories} tone="calories" />
            </View>
         </View>
       </Animated.View>

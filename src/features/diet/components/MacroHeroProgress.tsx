@@ -18,7 +18,7 @@ export function MacroHeroProgress({ protein, carbs, fat }: MacroHeroProgressProp
     <View className="gap-4">
       <View>
         <View className="flex-row justify-between mb-1.5 px-1">
-          <AppText className="text-[10px] font-black text-sky-500 uppercase tracking-[0.2em]">Proteína</AppText>
+          <AppText className="text-[10px] font-bold text-sky-500 uppercase tracking-[0.2em]">Proteína</AppText>
           <AppText className="text-[10px] font-bold text-text-muted">{Math.round(protein.value)}g / {protein.target}g</AppText>
         </View>
         <View className="h-2.5 rounded-full bg-sky-500/10 overflow-hidden border border-sky-500/20">
@@ -28,7 +28,7 @@ export function MacroHeroProgress({ protein, carbs, fat }: MacroHeroProgressProp
 
       <View>
         <View className="flex-row justify-between mb-1.5 px-1">
-          <AppText className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em]">Carboidratos</AppText>
+          <AppText className="text-[10px] font-bold text-amber-500 uppercase tracking-[0.2em]">Carboidratos</AppText>
           <AppText className="text-[10px] font-bold text-text-muted">{Math.round(carbs.value)}g / {carbs.target}g</AppText>
         </View>
         <View className="h-2.5 rounded-full bg-amber-500/10 overflow-hidden border border-amber-500/20">
@@ -38,7 +38,7 @@ export function MacroHeroProgress({ protein, carbs, fat }: MacroHeroProgressProp
 
       <View>
         <View className="flex-row justify-between mb-1.5 px-1">
-          <AppText className="text-[10px] font-black text-rose-500 uppercase tracking-[0.2em]">Gorduras</AppText>
+          <AppText className="text-[10px] font-bold text-rose-500 uppercase tracking-[0.2em]">Gorduras</AppText>
           <AppText className="text-[10px] font-bold text-text-muted">{Math.round(fat.value)}g / {fat.target}g</AppText>
         </View>
         <View className="h-2.5 rounded-full bg-rose-500/10 overflow-hidden border border-rose-500/20">
