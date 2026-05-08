@@ -11,9 +11,10 @@ type AppShellProps = PropsWithChildren<{
   greeting?: string;
   title: string;
   contentClassName?: string;
+  largeTitle?: boolean;
 }>;
 
-export function AppShell({ children, greeting = 'Bom dia', title, contentClassName }: AppShellProps) {
+export function AppShell({ children, greeting, title, contentClassName, largeTitle = false }: AppShellProps) {
   const currentDate = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
 
   return (
@@ -33,9 +34,15 @@ export function AppShell({ children, greeting = 'Bom dia', title, contentClassNa
               <AppText className="text-text-muted text-xs font-bold tracking-[0.3em] uppercase mb-3">
                 {currentDate}
               </AppText>
-              <AppText className="font-heading text-5xl font-semibold text-text-main tracking-tighter leading-[1.05]">
-                {greeting},{'\n'}{title}.
-              </AppText>
+              {largeTitle ? (
+                <AppText className="font-heading text-6xl font-black text-text-main tracking-tighter leading-none uppercase">
+                  {title}
+                </AppText>
+              ) : (
+                <AppText className="font-heading text-5xl font-semibold text-text-main tracking-tighter leading-[1.05]">
+                  {greeting ? `${greeting},\n` : ''}{title}.
+                </AppText>
+              )}
             </View>
             {children}
           </AnimatedScreenContent>

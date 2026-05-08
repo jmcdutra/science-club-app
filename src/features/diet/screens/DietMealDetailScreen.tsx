@@ -3,9 +3,9 @@ import { router, type Href, useLocalSearchParams } from 'expo-router';
 import { Alert, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { AppButton } from '@/src/shared/components/ui/AppButton';
 import { AppScreen } from '@/src/shared/components/ui/AppScreen';
 import { AppText } from '@/src/shared/components/ui/AppText';
+import { useAppTheme } from '@/src/shared/theme/appTheme';
 
 import { DietFoodRow } from '../components/DietFoodRow';
 import { MacroProgress } from '../components/MacroProgress';
@@ -21,6 +21,7 @@ import {
 
 export function DietMealDetailScreen() {
   const { mealId } = useLocalSearchParams<{ mealId: string }>();
+  const { isDark } = useAppTheme();
   const plan = useDietStore((state) => state.plan);
   const markMealConsumed = useDietStore((state) => state.markMealConsumed);
   const skipMeal = useDietStore((state) => state.skipMeal);
@@ -33,68 +34,87 @@ export function DietMealDetailScreen() {
   const consumedTotal = getMealConsumedMacros(mealLog);
 
   const confirmSkip = () => {
-    Alert.alert('Pular refeicao?', 'Ela ficara registrada no historico de hoje como refeicao pulada.', [
+    Alert.alert('Pular refeição?', 'Ela ficará registrada como pulada hoje.', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Pular', style: 'destructive', onPress: () => skipMeal(meal.id) },
     ]);
   };
 
   return (
-    <AppScreen contentClassName="px-5 pb-36 pt-8">
-      <View className="mb-8 flex-row items-center justify-between">
+    <AppScreen contentClassName="px-6 pb-48 pt-8">
+      {/* Minimal Header */}
+      <View className="mb-10 flex-row items-center justify-between">
         <Pressable
           accessibilityRole="button"
-          className="h-14 w-14 items-center justify-center rounded-full border border-border-subtle bg-bg-surface"
+          className="h-11 w-11 items-center justify-center rounded-full bg-bg-surface border border-border-subtle"
           onPress={() => router.back()}
         >
-          <ArrowLeft color="#FFFFFF" size={26} weight="bold" />
+          <ArrowLeft color={isDark ? '#FFFFFF' : '#111827'} size={20} weight="bold" />
         </Pressable>
-        <View className="flex-1 px-4">
-          <AppText className="text-center text-base font-semibold text-text-main">{meal.time}</AppText>
-          <AppText className="mt-1 text-center text-xs text-text-muted">{getStatusLabel(status)}</AppText>
-        </View>
+        <AppText className="text-xs font-bold uppercase tracking-[0.2em] text-text-muted">
+          {meal.time}
+        </AppText>
         <Pressable
           accessibilityRole="button"
-          className="h-14 w-14 items-center justify-center rounded-full border border-border-subtle bg-bg-surface"
+          className="h-11 w-11 items-center justify-center rounded-full bg-bg-surface border border-border-subtle"
           onPress={() => resetMeal(meal.id)}
         >
-          <ArrowCounterClockwise color="#A78BFA" size={22} weight="bold" />
+          <ArrowCounterClockwise color="#A78BFA" size={18} weight="bold" />
         </Pressable>
       </View>
 
-      <Animated.View entering={FadeInDown.duration(420)}>
-        <View className="mb-6 rounded-[32px] border border-border-subtle bg-bg-surface px-5 py-5">
-          <View className="mb-5 flex-row items-start justify-between gap-4">
-            <View className="flex-1">
-              <AppText className="text-sm text-text-muted">{meal.context}</AppText>
-              <AppText className="mt-2 text-4xl font-semibold leading-tight text-text-main">{meal.name}</AppText>
-              {meal.notes ? <AppText className="mt-3 text-base leading-snug text-text-muted">{meal.notes}</AppText> : null}
-            </View>
-            <View className="rounded-2xl bg-brand-primary/12 px-3 py-2">
-              <AppText className="text-sm font-semibold text-brand-secondary">{Math.round(plannedTotal.calories)} kcal</AppText>
-            </View>
-          </View>
+      {/* Meal Hero */}
+      <Animated.View entering={FadeInDown.duration(600)}>
+        <View className="mb-4">
+          <AppText className="text-text-muted text-xs font-bold tracking-[0.3em] uppercase mb-3">
+            {meal.context} • {getStatusLabel(status)}
+          </AppText>
+          <AppText className="font-heading text-5xl font-bold text-text-main tracking-tight leading-[1.05]">
+            {meal.name}
+          </AppText>
+          {meal.notes && (
+            <AppText className="mt-3 text-base leading-relaxed text-text-muted">
+              {meal.notes}
+            </AppText>
+          )}
+        </View>
 
-          <View className="gap-4">
-            <MacroProgress label="Consumido" value={consumedTotal.calories} target={plannedTotal.calories} unit=" kcal" tone="calories" />
-            <MacroProgress label="Proteina" value={consumedTotal.protein} target={plannedTotal.protein} tone="protein" />
-            <MacroProgress label="Carboidratos" value={consumedTotal.carbs} target={plannedTotal.carbs} tone="carbs" />
-          </View>
+        {/* Stats Summary */}
+        <View className="flex-row items-center gap-6 mt-6 mb-10">
+           <View className="flex-row items-baseline gap-1.5">
+             <AppText className="text-2xl font-bold text-text-main">{Math.round(plannedTotal.calories)}</AppText>
+             <AppText className="text-xs text-text-muted uppercase tracking-widest font-bold">kcal</AppText>
+           </View>
+           <View className="flex-row items-baseline gap-1.5">
+             <AppText className="text-2xl font-bold text-text-main">{Math.round(plannedTotal.protein)}g</AppText>
+             <AppText className="text-xs text-text-muted uppercase tracking-widest font-bold">P</AppText>
+           </View>
+           <View className="flex-row items-baseline gap-1.5">
+             <AppText className="text-2xl font-bold text-text-main">{Math.round(plannedTotal.carbs)}g</AppText>
+             <AppText className="text-xs text-text-muted uppercase tracking-widest font-bold">C</AppText>
+           </View>
+        </View>
+
+        {/* Progress Bars (Subtle) */}
+        <View className="mb-12">
+           <MacroProgress label="Consumo da Refeição" value={consumedTotal.calories} target={plannedTotal.calories} unit="kcal" tone="calories" />
         </View>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(80).duration(420)} className="mb-6">
-        <View className="mb-4 flex-row items-center justify-between">
-          <AppText className="text-2xl font-semibold text-text-main">Alimentos</AppText>
-          <AppText className="text-sm text-text-muted">{meal.foods.length} itens</AppText>
+      {/* Food List */}
+      <Animated.View entering={FadeInDown.delay(100).duration(600)} className="mb-12">
+        <View className="flex-row items-end justify-between border-b border-border-subtle pb-4 mb-2">
+          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">Alimentos</AppText>
+          <AppText className="text-xs text-text-muted">{meal.foods.length} itens</AppText>
         </View>
 
-        <View className="overflow-hidden rounded-[28px] border border-border-subtle bg-bg-surface">
-          {meal.foods.map((food) => (
+        <View>
+          {meal.foods.map((food, index) => (
             <DietFoodRow
               key={food.id}
               food={food}
               log={getFoodLog(mealLog, food.id)}
+              isLast={index === meal.foods.length - 1}
               onLog={() => router.push(`/(app)/diet/log?mealId=${meal.id}&foodId=${food.id}` as Href)}
               onSwap={() => {
                 const replacement = food.substitutions?.[0];
@@ -105,29 +125,33 @@ export function DietMealDetailScreen() {
         </View>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(120).duration(420)} className="gap-3">
-        <AppButton
-          leftIcon={<CheckCircle color="#FFFFFF" size={20} weight="bold" />}
+      {/* Actions */}
+      <Animated.View entering={FadeInDown.delay(200).duration(600)} className="gap-3">
+        <Pressable
+          accessibilityRole="button"
+          className="min-h-[56px] flex-row items-center justify-center gap-3 rounded-2xl bg-brand-primary"
           onPress={() => markMealConsumed(meal.id)}
         >
-          Marcar refeicao consumida
-        </AppButton>
-
-        <AppButton
-          variant="secondary"
-          leftIcon={<Scales color="#A78BFA" size={20} weight="bold" />}
-          onPress={() => router.push(`/(app)/diet/log?mealId=${meal.id}` as Href)}
-        >
-          Registrar com balanca
-        </AppButton>
+          <CheckCircle color="#FFFFFF" size={20} weight="bold" />
+          <AppText className="text-base font-bold text-white">Marcar como Consumida</AppText>
+        </Pressable>
 
         <Pressable
           accessibilityRole="button"
-          className="min-h-[58px] flex-row items-center justify-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10"
+          className="min-h-[56px] flex-row items-center justify-center gap-2 rounded-2xl bg-bg-surface border border-border-subtle"
+          onPress={() => router.push(`/(app)/diet/log?mealId=${meal.id}` as Href)}
+        >
+          <Scales color="#A78BFA" size={20} weight="bold" />
+          <AppText className="text-base font-bold text-text-main">Registrar com Balança</AppText>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          className="min-h-[56px] flex-row items-center justify-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10"
           onPress={confirmSkip}
         >
-          <Prohibit color="#FCA5A5" size={20} weight="bold" />
-          <AppText className="text-base font-semibold text-red-200">Pular refeicao</AppText>
+          <Prohibit color="#FCA5A5" size={18} weight="bold" />
+          <AppText className="text-base font-bold text-red-400">Pular Refeição</AppText>
         </Pressable>
       </Animated.View>
     </AppScreen>

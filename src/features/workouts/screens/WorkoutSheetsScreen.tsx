@@ -20,7 +20,7 @@ export function WorkoutSheetsScreen() {
   );
 
   return (
-    <AppShell greeting="Seus" title="Treinos" contentClassName="pb-32">
+    <AppShell title="SEUS TREINOS" largeTitle contentClassName="pb-32">
       {/* Today's Workout — hero card */}
       <Animated.View entering={FadeInDown.delay(200).duration(800)} className="mb-14">
         <Pressable

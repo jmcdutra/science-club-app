@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 import { activeDietPlan } from '../data/dietPlan';
 import { initialDietLogs } from '../data/history';
-import { DietDayLog, DietFoodSubstitution, DietPlan, FoodLog, MealLog } from '../types';
+import { DietDayLog, DietFoodSubstitution, DietPlan, FoodLog, MacroValues, MealLog } from '../types';
 import { getTodayKey, resolveMealLogStatus, scaleNutrition } from '../utils';
 
 type DietStore = {
@@ -16,6 +16,7 @@ type DietStore = {
     foodId: string;
     actualGrams: number;
     replacement?: DietFoodSubstitution;
+    customNutrition?: MacroValues;
   }) => void;
   markMealConsumed: (mealId: string) => void;
   skipMeal: (mealId: string) => void;
@@ -63,7 +64,7 @@ export const useDietStore = create<DietStore>((set, get) => ({
         },
       };
     }),
-  logFood: ({ mealId, foodId, actualGrams, replacement }) =>
+  logFood: ({ mealId, foodId, actualGrams, replacement, customNutrition }) =>
     set((state) => {
       const meal = state.plan.meals.find((item) => item.id === mealId);
       const food = meal?.foods.find((item) => item.id === foodId);
@@ -80,7 +81,7 @@ export const useDietStore = create<DietStore>((set, get) => ({
         selectedFoodName: source.name,
         plannedGrams: source.plannedGrams,
         actualGrams,
-        nutrition: scaleNutrition(source, actualGrams),
+        nutrition: customNutrition ?? scaleNutrition(source, actualGrams),
         loggedAt: now,
         replacedBy: replacement?.id,
       };

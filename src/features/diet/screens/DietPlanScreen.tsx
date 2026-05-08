@@ -5,96 +5,123 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { AppScreen } from '@/src/shared/components/ui/AppScreen';
 import { AppText } from '@/src/shared/components/ui/AppText';
+import { useAppTheme } from '@/src/shared/theme/appTheme';
 
 import { MacroProgress } from '../components/MacroProgress';
 import { useDietStore } from '../services/diet.store';
 import { getMealTotal, getPlanTotal } from '../utils';
 
 export function DietPlanScreen() {
+  const { isDark } = useAppTheme();
   const plan = useDietStore((state) => state.plan);
   const planTotal = getPlanTotal(plan);
 
   return (
-    <AppScreen contentClassName="px-5 pb-32 pt-8">
-      <View className="mb-8 flex-row items-center justify-between">
+    <AppScreen contentClassName="px-6 pb-48 pt-8">
+      {/* Header */}
+      <View className="mb-10 flex-row items-center justify-between">
         <Pressable
           accessibilityRole="button"
-          className="h-14 w-14 items-center justify-center rounded-full border border-border-subtle bg-bg-surface"
+          className="h-11 w-11 items-center justify-center rounded-full bg-bg-surface border border-border-subtle"
           onPress={() => router.back()}
         >
-          <ArrowLeft color="#FFFFFF" size={26} weight="bold" />
+          <ArrowLeft color={isDark ? '#FFFFFF' : '#111827'} size={20} weight="bold" />
         </Pressable>
-        <View className="flex-1 px-4">
-          <AppText className="text-center text-base font-semibold text-text-main">Plano alimentar</AppText>
-          <AppText className="mt-1 text-center text-xs text-text-muted">v{plan.version} - {plan.updatedAt}</AppText>
-        </View>
-        <View className="h-14 w-14 items-center justify-center rounded-full border border-border-subtle bg-bg-surface">
-          <UserCircle color="#A78BFA" size={25} weight="duotone" />
+        <AppText className="text-xs font-bold uppercase tracking-[0.2em] text-text-muted">
+          v{plan.version} • {plan.updatedAt}
+        </AppText>
+        <View className="h-11 w-11 items-center justify-center rounded-full bg-bg-surface border border-border-subtle">
+          <UserCircle color="#A78BFA" size={20} weight="duotone" />
         </View>
       </View>
 
-      <Animated.View entering={FadeInDown.duration(420)}>
-        <View className="mb-6 rounded-[32px] border border-border-subtle bg-bg-surface px-5 py-5">
-          <AppText className="text-sm text-text-muted">{plan.professional}</AppText>
-          <AppText className="mt-2 text-4xl font-semibold leading-tight text-text-main">{plan.name}</AppText>
-          <AppText className="mt-3 text-base leading-snug text-text-muted">{plan.objective}</AppText>
+      {/* Plan Hero */}
+      <Animated.View entering={FadeInDown.duration(600)}>
+        <View className="mb-4">
+          <AppText className="text-text-muted text-xs font-bold tracking-[0.3em] uppercase mb-3">
+            {plan.professional}
+          </AppText>
+          <AppText className="font-heading text-5xl font-bold text-text-main tracking-tight leading-[1.05]">
+            {plan.name}
+          </AppText>
+          <AppText className="mt-3 text-base leading-relaxed text-text-muted">
+            {plan.objective}
+          </AppText>
+        </View>
 
-          <View className="mt-6 gap-4">
-            <MacroProgress label="Calorias" value={planTotal.calories} target={plan.targets.calories} unit=" kcal" tone="calories" />
-            <MacroProgress label="Proteina" value={planTotal.protein} target={plan.targets.protein} tone="protein" />
-            <MacroProgress label="Carboidratos" value={planTotal.carbs} target={plan.targets.carbs} tone="carbs" />
-            <MacroProgress label="Gorduras" value={planTotal.fat} target={plan.targets.fat} tone="fat" />
-          </View>
+        {/* Stats Grid */}
+        <View className="flex-row flex-wrap gap-x-8 gap-y-6 mt-8 mb-12">
+           <View className="flex-1 min-w-[120px]">
+             <MacroProgress label="Calorias" value={planTotal.calories} target={plan.targets.calories} unit="kcal" tone="calories" />
+           </View>
+           <View className="flex-1 min-w-[120px]">
+             <MacroProgress label="Proteína" value={planTotal.protein} target={plan.targets.protein} tone="protein" />
+           </View>
+           <View className="flex-1 min-w-[120px]">
+             <MacroProgress label="Carbos" value={planTotal.carbs} target={plan.targets.carbs} tone="carbs" />
+           </View>
+           <View className="flex-1 min-w-[120px]">
+             <MacroProgress label="Gorduras" value={planTotal.fat} target={plan.targets.fat} tone="fat" />
+           </View>
         </View>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(80).duration(420)} className="mb-7 gap-3">
-        <View className="rounded-[24px] border border-border-subtle bg-bg-surface px-5 py-4">
-          <View className="mb-3 flex-row items-center gap-3">
-            <Drop color="#67E8F9" size={22} weight="duotone" />
-            <AppText className="text-lg font-semibold text-text-main">Hidratacao</AppText>
-          </View>
-          <AppText className="text-base leading-relaxed text-text-muted">{plan.waterGuidance}</AppText>
-        </View>
-
-        <View className="rounded-[24px] border border-border-subtle bg-bg-surface px-5 py-4">
-          <View className="mb-3 flex-row items-center gap-3">
-            <Pill color="#A78BFA" size={22} weight="duotone" />
-            <AppText className="text-lg font-semibold text-text-main">Suplementacao</AppText>
-          </View>
-          <AppText className="text-base leading-relaxed text-text-muted">{plan.supplementGuidance}</AppText>
-        </View>
-
-        <View className="rounded-[24px] border border-border-subtle bg-bg-surface px-5 py-4">
-          <View className="mb-3 flex-row items-center gap-3">
-            <NotePencil color="#A78BFA" size={22} weight="duotone" />
-            <AppText className="text-lg font-semibold text-text-main">Observacoes</AppText>
-          </View>
-          <AppText className="text-base leading-relaxed text-text-muted">{plan.generalNotes}</AppText>
-          <AppText className="mt-3 text-sm text-amber-200">Restricoes: {plan.restrictions}</AppText>
-        </View>
+      {/* Guidance Sections */}
+      <Animated.View entering={FadeInDown.delay(100).duration(600)} className="mb-14">
+        {[
+          { label: 'Hidratação', icon: Drop, text: plan.waterGuidance, color: '#67E8F9' },
+          { label: 'Suplementação', icon: Pill, text: plan.supplementGuidance, color: '#A78BFA' },
+          { label: 'Observações', icon: NotePencil, text: plan.generalNotes, color: '#FCD34D' },
+        ].map((item, index) => {
+          const Icon = item.icon;
+          return (
+            <View 
+              key={item.label}
+              className="py-6"
+              style={index < 2 ? { borderBottomWidth: 1, borderBottomColor: isDark ? '#1A1A1A' : '#F3F4F6' } : undefined}
+            >
+              <View className="flex-row items-center gap-3 mb-3">
+                <View className="h-8 w-8 items-center justify-center rounded-full" style={{ backgroundColor: `${item.color}15` }}>
+                  <Icon color={item.color} size={16} weight="duotone" />
+                </View>
+                <AppText className="text-[11px] font-bold uppercase tracking-widest text-text-muted">{item.label}</AppText>
+              </View>
+              <AppText className="text-base leading-relaxed text-text-main">{item.text}</AppText>
+              {item.label === 'Observações' && plan.restrictions && (
+                <View className="mt-3 bg-amber-500/10 px-3 py-1.5 rounded-lg self-start">
+                   <AppText className="text-xs font-bold text-amber-500 uppercase tracking-widest">Restrições: {plan.restrictions}</AppText>
+                </View>
+              )}
+            </View>
+          );
+        })}
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(120).duration(420)}>
-        <AppText className="mb-4 text-2xl font-semibold text-text-main">Refeicoes do plano</AppText>
-        <View className="overflow-hidden rounded-[28px] border border-border-subtle bg-bg-surface">
-          {plan.meals.map((meal) => {
+      {/* Meal List */}
+      <Animated.View entering={FadeInDown.delay(200).duration(600)}>
+        <View className="flex-row items-end justify-between border-b border-border-subtle pb-4 mb-2">
+          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">Refeições do Plano</AppText>
+          <AppText className="text-xs text-text-muted">{plan.meals.length} refeições</AppText>
+        </View>
+
+        <View>
+          {plan.meals.map((meal, index) => {
             const total = getMealTotal(meal);
-
             return (
               <Pressable
                 key={meal.id}
                 accessibilityRole="button"
-                className="flex-row items-center border-b border-border-subtle px-4 py-4 last:border-b-0"
+                className="flex-row items-center py-5"
+                style={index < plan.meals.length - 1 ? { borderBottomWidth: 1, borderBottomColor: isDark ? '#1A1A1A' : '#F3F4F6' } : undefined}
                 onPress={() => router.push(`/(app)/diet/meals/${meal.id}` as Href)}
               >
                 <View className="flex-1">
-                  <AppText className="text-lg font-semibold text-text-main">{meal.name}</AppText>
-                  <AppText className="mt-1 text-sm text-text-muted">
-                    {meal.time} - {Math.round(total.calories)} kcal - {meal.foods.length} alimentos
+                  <AppText className="text-lg font-semibold text-text-main tracking-tight">{meal.name}</AppText>
+                  <AppText className="mt-0.5 text-sm text-text-muted">
+                    {meal.time} • {Math.round(total.calories)} kcal • {meal.foods.length} alimentos
                   </AppText>
                 </View>
-                <CaretRight color="#71717A" size={20} weight="bold" />
+                <CaretRight color={isDark ? '#555555' : '#9CA3AF'} size={18} weight="bold" />
               </Pressable>
             );
           })}

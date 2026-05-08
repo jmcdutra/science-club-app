@@ -25,17 +25,19 @@ export function MacroProgress({ label, value, target, unit = 'g', tone = 'calori
   const percent = getProgressPercent(value, target);
 
   return (
-    <View>
+    <View className="mb-4">
       <View className="mb-2 flex-row items-baseline justify-between">
-        <AppText className="text-sm font-semibold text-text-main">{label}</AppText>
-        <AppText className="text-xs text-text-muted">
-          {Math.round(value)}
-          {unit} / {target}
-          {unit}
+        <AppText className="text-[11px] font-bold uppercase tracking-widest text-text-muted">{label}</AppText>
+        <AppText className="text-xs font-semibold text-text-main">
+          {Math.round(value)}{unit}
+          <AppText className="text-[10px] font-medium text-text-muted"> / {target}{unit}</AppText>
         </AppText>
       </View>
-      <View className="h-2 overflow-hidden rounded-full bg-bg-base">
-        <View className={cn('h-full rounded-full', toneClasses[tone])} style={{ width: `${percent}%` }} />
+      <View className="h-1 rounded-full bg-border-subtle/50">
+        <View 
+          className={cn('h-full rounded-full', toneClasses[tone])} 
+          style={{ width: `${Math.min(100, percent)}%` }} 
+        />
       </View>
     </View>
   );

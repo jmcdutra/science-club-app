@@ -2,6 +2,8 @@ import { CheckCircle, Scales, Swap } from 'phosphor-react-native';
 import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/src/shared/components/ui/AppText';
+import { useAppTheme } from '@/src/shared/theme/appTheme';
+import { cn } from '@/src/shared/utils/cn';
 
 import { DietFood, FoodLog } from '../types';
 import { formatMacro } from '../utils';
@@ -11,64 +13,77 @@ type DietFoodRowProps = {
   log?: FoodLog;
   onLog: () => void;
   onSwap?: () => void;
+  isLast?: boolean;
 };
 
-export function DietFoodRow({ food, log, onLog, onSwap }: DietFoodRowProps) {
+export function DietFoodRow({ food, log, onLog, onSwap, isLast }: DietFoodRowProps) {
+  const { isDark } = useAppTheme();
   const hasLog = Boolean(log);
   const displayName = log?.selectedFoodName ?? food.name;
   const grams = log?.actualGrams ?? food.plannedGrams;
   const nutrition = log?.nutrition ?? food.nutrition;
 
   return (
-    <View className="border-b border-border-subtle px-4 py-4 last:border-b-0">
+    <View 
+      className="py-6"
+      style={!isLast ? { borderBottomWidth: 1, borderBottomColor: isDark ? '#1A1A1A' : '#F3F4F6' } : undefined}
+    >
       <View className="flex-row items-start gap-4">
-        <View className="mt-1 h-12 w-12 items-center justify-center rounded-2xl bg-bg-base">
-          {hasLog ? <CheckCircle color="#22C55E" size={24} weight="fill" /> : <Scales color="#A78BFA" size={23} weight="duotone" />}
+        <View className={cn(
+          "h-10 w-10 items-center justify-center rounded-full mt-1",
+          hasLog ? "bg-green-500/10" : "bg-bg-surface border border-border-subtle"
+        )}>
+          {hasLog ? (
+             <CheckCircle color="#22C55E" size={20} weight="fill" />
+          ) : (
+             <Scales color={isDark ? '#888888' : '#666666'} size={18} weight="duotone" />
+          )}
         </View>
 
         <View className="flex-1">
-          <AppText className="text-lg font-semibold leading-snug text-text-main">{displayName}</AppText>
-          <AppText className="mt-1 text-sm text-text-muted">
-            {hasLog ? `${Math.round(grams)}g registrados` : `${food.displayQuantity} prescritos`}
-          </AppText>
-
-          <View className="mt-3 flex-row flex-wrap gap-2">
-            <View className="rounded-full bg-bg-base px-3 py-1">
-              <AppText className="text-xs font-semibold text-text-main">{Math.round(nutrition.calories)} kcal</AppText>
+          <View className="flex-row items-start justify-between">
+            <View className="flex-1">
+              <AppText className={cn(
+                "text-lg font-semibold tracking-tight leading-tight",
+                hasLog && "opacity-60"
+              )}>
+                {displayName}
+              </AppText>
+              <AppText className="mt-1 text-sm text-text-muted">
+                {hasLog ? `${Math.round(grams)}g registrados` : `${food.displayQuantity} prescritos`}
+              </AppText>
             </View>
-            <View className="rounded-full bg-sky-400/10 px-3 py-1">
-              <AppText className="text-xs font-semibold text-sky-300">P {formatMacro(nutrition.protein)}</AppText>
-            </View>
-            <View className="rounded-full bg-amber-300/10 px-3 py-1">
-              <AppText className="text-xs font-semibold text-amber-200">C {formatMacro(nutrition.carbs)}</AppText>
-            </View>
-            <View className="rounded-full bg-rose-400/10 px-3 py-1">
-              <AppText className="text-xs font-semibold text-rose-300">G {formatMacro(nutrition.fat)}</AppText>
+            <View className="items-end">
+              <AppText className="text-sm font-bold text-text-main">{Math.round(nutrition.calories)} kcal</AppText>
+              <View className="flex-row gap-2 mt-1">
+                 <AppText className="text-[10px] font-bold text-sky-400 uppercase tracking-tighter">P{formatMacro(nutrition.protein)}</AppText>
+                 <AppText className="text-[10px] font-bold text-amber-400 uppercase tracking-tighter">C{formatMacro(nutrition.carbs)}</AppText>
+                 <AppText className="text-[10px] font-bold text-rose-400 uppercase tracking-tighter">G{formatMacro(nutrition.fat)}</AppText>
+              </View>
             </View>
           </View>
 
-          {log?.replacedBy ? (
-            <AppText className="mt-3 text-sm text-brand-secondary">Substituicao registrada somente para hoje.</AppText>
-          ) : null}
-
-          <View className="mt-4 flex-row gap-3">
+          <View className="mt-5 flex-row gap-2.5">
             <Pressable
               accessibilityRole="button"
-              className="min-h-[42px] flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-brand-primary"
+              className={cn(
+                "h-10 px-6 items-center justify-center rounded-2xl",
+                hasLog ? "bg-bg-surface border border-border-subtle" : "bg-brand-primary"
+              )}
               onPress={onLog}
             >
-              <Scales color="#FFFFFF" size={17} weight="bold" />
-              <AppText className="text-sm font-semibold text-white">{hasLog ? 'Editar gramas' : 'Pesar'}</AppText>
+              <AppText className={cn("text-xs font-bold uppercase tracking-widest", hasLog ? "text-text-main" : "text-white")}>
+                {hasLog ? 'Editar' : 'Pesar'}
+              </AppText>
             </Pressable>
 
-            {food.substitutions?.length ? (
+            {food.substitutions?.length && !hasLog ? (
               <Pressable
                 accessibilityRole="button"
-                className="min-h-[42px] flex-row items-center justify-center gap-2 rounded-2xl border border-border-subtle bg-bg-base px-4"
+                className="h-10 px-6 items-center justify-center rounded-2xl bg-bg-surface border border-border-subtle"
                 onPress={onSwap}
               >
-                <Swap color="#A78BFA" size={17} weight="bold" />
-                <AppText className="text-sm font-semibold text-text-main">Trocar</AppText>
+                <AppText className="text-xs font-bold uppercase tracking-widest text-text-main">Trocar</AppText>
               </Pressable>
             ) : null}
           </View>
