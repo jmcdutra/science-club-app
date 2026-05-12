@@ -1,21 +1,25 @@
 import { ArrowLeft, CheckCircle, PaperPlaneTilt, WarningCircle } from 'phosphor-react-native';
 import { router, type Href, useLocalSearchParams } from 'expo-router';
-import { Alert, Pressable, View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 import { AppScreen } from '@/src/shared/components/ui/AppScreen';
+import { AppButton } from '@/src/shared/components/ui/AppButton';
 import { AppText } from '@/src/shared/components/ui/AppText';
-import { useAppTheme } from '@/src/shared/theme/appTheme';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
 
 import { createAssessmentDraft, useAssessmentsStore } from '../services/assessments.store';
 import { getEvaluationById, submitEvaluation, uploadFile } from '../api/assessments';
-import { getQuestionnaireProgress, getPhotoProgress, getExamProgress, canSubmitAssessment } from '../utils';
+import {
+  getExamProgress,
+  getPhotoProgress,
+  getQuestionnaireProgress,
+  canSubmitAssessment,
+} from '../utils';
 
 export function AssessmentReviewScreen() {
-  const { isDark } = useAppTheme();
   const { assessmentId } = useLocalSearchParams<{ assessmentId: string }>();
   const { session } = useAuthStore();
   const queryClient = useQueryClient();
@@ -42,7 +46,7 @@ export function AssessmentReviewScreen() {
       router.replace('/(app)/(tabs)/assessments' as any);
     },
     onError: () => {
-      setErrorMsg('Não foi possível enviar a avaliação. Tente novamente.');
+      setErrorMsg('Não foi possível enviar. Tente novamente.');
     },
   });
 
@@ -81,7 +85,7 @@ export function AssessmentReviewScreen() {
     try {
       const uploadedPhotos = await Promise.all(
         Object.entries(draft.photos)
-          .filter(([_, uri]) => !!uri)
+          .filter(([, uri]) => !!uri)
           .map(async ([id, uri]) => {
             const label =
               assessment.questionnaire.image_questions.find(
@@ -95,7 +99,7 @@ export function AssessmentReviewScreen() {
 
       const uploadedExams = await Promise.all(
         Object.entries(draft.exams)
-          .filter(([_, uri]) => !!uri)
+          .filter(([, uri]) => !!uri)
           .map(async ([id, uri]) => {
             if (uri!.startsWith('http')) return { url: uri!, label: id };
             const { url } = await uploadFile(session?.token!, uri!, 'exams/evaluations');
@@ -118,51 +122,105 @@ export function AssessmentReviewScreen() {
     }
   };
 
-  const isLoading_ = mutation.isPending || isUploading;
+  const isBusy = mutation.isPending || isUploading;
 
   return (
-    <AppScreen contentClassName="px-5 pb-12 pt-5">
-      {/* Header */}
-      <View className="mb-10 flex-row items-center justify-between">
+    <AppScreen contentClassName="px-6 pb-8 pt-5">
+      {/* ── Back bar ── */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 24,
+        }}
+      >
         <Pressable
           accessibilityRole="button"
-          className="h-11 w-11 items-center justify-center rounded-full bg-bg-surface border border-border-subtle"
+          style={{
+            width: 44, height: 44, borderRadius: 99,
+            backgroundColor: '#111111', borderWidth: 1, borderColor: '#222222',
+            alignItems: 'center', justifyContent: 'center',
+          }}
           onPress={() => router.back()}
         >
-          <ArrowLeft color={isDark ? '#FFFFFF' : '#111827'} size={20} weight="bold" />
+          <ArrowLeft color="#FFFFFF" size={20} weight="bold" />
         </Pressable>
-        <AppText className="text-xs font-bold uppercase tracking-[0.2em] text-text-muted">Revisar</AppText>
-        <View className="h-11 w-11" />
+        <AppText
+          style={{
+            fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
+            letterSpacing: 3, color: '#555555',
+          }}
+        >
+          Revisar
+        </AppText>
+        <View style={{ width: 44 }} />
       </View>
 
-      <Animated.View entering={FadeInDown.duration(420)} className="mb-8">
-        <AppText className="text-2xl font-bold leading-tight text-text-main">Tudo certo?</AppText>
-        <AppText className="mt-2 text-sm text-text-muted leading-relaxed">
-          Confira o resumo antes de enviar para a equipe. Após o envio, não será possível editar.
+      {/* ── Editorial heading ── */}
+      <Animated.View entering={FadeInDown.duration(420)} style={{ marginBottom: 24 }}>
+        <AppText
+          className="font-heading"
+          style={{ fontSize: 22, fontWeight: '600', letterSpacing: -0.5, color: '#FFFFFF', marginBottom: 6, lineHeight: 28 }}
+        >
+          Tudo certo?
+        </AppText>
+        <AppText style={{ fontSize: 13, color: '#666666', lineHeight: 18 }}>
+          Confira o resumo antes de enviar. Após o envio não será possível editar.
         </AppText>
       </Animated.View>
 
-      <View className="gap-3 mb-8">
+      {/* ── Review sections ── */}
+      <View style={{ gap: 8, marginBottom: 24 }}>
         {assessment.questionnaire.questions.length > 0 && (
           <ReviewSection
             title="Questionário"
             status={`${questionnaire.answered}/${questionnaire.total} respondidas`}
             done={questionnaire.percent === 100}
+            delay={80}
           >
-            {assessment.questionnaire.questions.map((q: any) => (
-              <View key={q.id || q._id} className="mb-3 border-b border-border-subtle/50 pb-3 last:mb-0 last:border-0 last:pb-0">
-                <AppText className="text-[11px] font-bold uppercase tracking-wide text-text-muted mb-1">
-                  {q.label}
-                </AppText>
-                <AppText className="text-sm text-text-main">
-                  {draft.answers[q.id || q._id]
-                    ? Array.isArray(draft.answers[q.id || q._id])
-                      ? (draft.answers[q.id || q._id] as string[]).join(', ')
-                      : draft.answers[q.id || q._id]
-                    : 'Não respondido'}
-                </AppText>
-              </View>
-            ))}
+            <View style={{ gap: 12 }}>
+              {assessment.questionnaire.questions.map((q: any) => {
+                const qId = q.id || q._id;
+                const ans = draft.answers[qId];
+                const ansText = ans
+                  ? Array.isArray(ans)
+                    ? ans.join(', ')
+                    : String(ans)
+                  : null;
+                return (
+                  <View
+                    key={qId}
+                    style={{
+                      borderBottomWidth: 1,
+                      borderBottomColor: '#1A1A1A',
+                      paddingBottom: 12,
+                    }}
+                  >
+                    <AppText
+                      style={{
+                        fontSize: 10,
+                        fontWeight: '700',
+                        textTransform: 'uppercase',
+                        letterSpacing: 2,
+                        color: '#555555',
+                        marginBottom: 4,
+                      }}
+                    >
+                      {q.label}
+                    </AppText>
+                    <AppText
+                      style={{
+                        fontSize: 14,
+                        color: ansText ? '#CCCCCC' : '#3A3A3A',
+                      }}
+                    >
+                      {ansText ?? 'Não respondido'}
+                    </AppText>
+                  </View>
+                );
+              })}
+            </View>
           </ReviewSection>
         )}
 
@@ -171,8 +229,9 @@ export function AssessmentReviewScreen() {
             title="Fotos corporais"
             status={`${photos.done}/${photos.total} fotos`}
             done={photos.done === photos.total}
+            delay={140}
           >
-            <AppText className="text-sm text-text-muted">
+            <AppText style={{ fontSize: 13, color: '#666666' }}>
               {photos.done} de {photos.total} posições capturadas.
             </AppText>
           </ReviewSection>
@@ -183,43 +242,56 @@ export function AssessmentReviewScreen() {
             title="Exames e anexos"
             status={`${exams.done}/${exams.total} anexos`}
             done={exams.done === exams.total}
+            delay={180}
           >
-            <AppText className="text-sm text-text-muted">
+            <AppText style={{ fontSize: 13, color: '#666666' }}>
               {exams.done} de {exams.total} documentos anexados.
             </AppText>
           </ReviewSection>
         )}
       </View>
 
-      {/* Error message */}
+      {/* ── Error ── */}
       {errorMsg && (
         <Animated.View
           entering={FadeInDown.duration(300)}
-          className="flex-row items-start gap-3 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 mb-4"
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 10,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: 'rgba(248,113,113,0.15)',
+            backgroundColor: 'rgba(248,113,113,0.08)',
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            marginBottom: 12,
+          }}
         >
           <WarningCircle color="#F87171" size={18} weight="fill" style={{ marginTop: 1 }} />
-          <AppText className="flex-1 text-sm text-red-400">{errorMsg}</AppText>
+          <AppText style={{ flex: 1, fontSize: 13, color: '#F87171', lineHeight: 18 }}>
+            {errorMsg}
+          </AppText>
         </Animated.View>
       )}
 
-      <Pressable
-        accessibilityRole="button"
-        disabled={isLoading_ || isSubmitted}
-        style={{ opacity: isSubmitted ? 0.5 : 1 }}
-        className="min-h-[56px] flex-row items-center justify-center gap-2 rounded-2xl bg-brand-primary"
+      {/* ── Submit CTA ── */}
+      <AppButton
+        variant="primary"
+        fullWidth
+        loading={isBusy}
+        disabled={isBusy || isSubmitted}
         onPress={handleSubmit}
+        rightIcon={
+          !isSubmitted ? (
+            <PaperPlaneTilt color="#fff" size={18} weight="bold" />
+          ) : undefined
+        }
       >
-        {isLoading_ ? (
-          <ActivityIndicator color="#FFFFFF" size="small" />
-        ) : (
-          <>
-            <AppText className="text-base font-bold text-white">
-              {isSubmitted ? 'Avaliação já enviada' : 'Confirmar e enviar'}
-            </AppText>
-            {!isSubmitted && <PaperPlaneTilt color="#FFFFFF" size={18} weight="bold" />}
-          </>
-        )}
-      </Pressable>
+        <AppText style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>
+          {isSubmitted ? 'Avaliação já enviada' : 'Confirmar e enviar'}
+        </AppText>
+      </AppButton>
     </AppScreen>
   );
 }
@@ -228,23 +300,60 @@ function ReviewSection({
   title,
   status,
   done,
+  delay,
   children,
 }: {
   title: string;
   status: string;
   done: boolean;
+  delay: number;
   children: React.ReactNode;
 }) {
   return (
-    <View className="rounded-[24px] border border-border-subtle bg-bg-surface p-5">
-      <View className="flex-row items-center justify-between mb-4">
+    <Animated.View
+      entering={FadeInDown.delay(delay).duration(420)}
+      style={{
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#222222',
+        backgroundColor: '#111111',
+        padding: 16,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 14,
+        }}
+      >
         <View style={{ flex: 1 }}>
-          <AppText className="text-[11px] font-bold uppercase tracking-[0.25em] text-text-muted">{title}</AppText>
-          <AppText className="text-base font-bold text-text-main mt-0.5">{status}</AppText>
+          <AppText
+            style={{
+              fontSize: 11,
+              fontWeight: '700',
+              textTransform: 'uppercase',
+              letterSpacing: 3,
+              color: '#555555',
+              marginBottom: 3,
+            }}
+          >
+            {title}
+          </AppText>
+          <AppText style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{status}</AppText>
         </View>
         {done && <CheckCircle color="#34D399" size={20} weight="fill" />}
       </View>
-      <View className="rounded-2xl bg-bg-base p-4">{children}</View>
-    </View>
+      <View
+        style={{
+          borderRadius: 12,
+          backgroundColor: '#0C0C0C',
+          padding: 14,
+        }}
+      >
+        {children}
+      </View>
+    </Animated.View>
   );
 }

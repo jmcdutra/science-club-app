@@ -1,225 +1,1020 @@
-import { Clock, Play } from 'phosphor-react-native';
-import { router, type Href } from 'expo-router';
-import { Pressable, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import {
+  Barbell,
+  Check,
+  Clock,
+  Flame,
+  MagnifyingGlass,
+  Play,
+  X,
+} from "phosphor-react-native";
+import { router, type Href } from "expo-router";
+import { Image } from "expo-image";
+import {
+  ImageBackground,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
+import * as Linking from "expo-linking";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import Svg, {
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  RadialGradient,
+  Rect,
+  Stop,
+} from "react-native-svg";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppShell } from '@/src/shared/components/layout/AppShell';
-import { AppText } from '@/src/shared/components/ui/AppText';
-import { useAppTheme } from '@/src/shared/theme/appTheme';
+import { EmptyPlanState } from "@/src/shared/components/layout/EmptyPlanState";
+import { PageHeader } from "@/src/shared/components/layout/PageHeader";
+import { AppButton } from "@/src/shared/components/ui/AppButton";
+import { AppText } from "@/src/shared/components/ui/AppText";
+import { NotificationsModal } from "@/src/shared/components/ui/NotificationsModal";
+import { useAppTheme } from "@/src/shared/theme/appTheme";
+import { useAuthStore } from "@/src/features/auth/services/auth.store";
 
-import { workoutSheets } from '../data/workoutSheets';
+import {
+  getCurrentWorkout,
+  type WorkoutSessionDTO,
+  type WorkoutSheetDTO,
+} from "../api/workouts";
+import {
+  createEvaluation,
+  getStudentEvaluations,
+  type EvaluationDTO,
+} from "../../assessments/api/assessments";
+import { WorkoutNativeBottomSheet } from "../components/WorkoutNativeBottomSheet";
+import { workoutSheets } from "../data/workoutSheets";
 
-const MUSCLE_COLOR: Record<string, string> = {
-  Abdomen: '#8B5CF6', Core: '#8B5CF6',
-  Quadriceps: '#F59E0B', Pernas: '#F59E0B',
-  Dorsais: '#38BDF8', Biceps: '#A78BFA',
-  Triceps: '#C084FC', Peitoral: '#FF6B9A',
-  Posterior: '#FFB86B', Ombros: '#7DD3FC',
-  Gluteos: '#FB7185', Panturrilhas: '#FCD34D',
+type WorkoutPreview = {
+  sheet: WorkoutSheetDTO;
+  session: WorkoutSessionDTO;
+  image: number;
+  label: string;
+  progress: number;
+  displayTitle: string;
+  displayExercises: number;
+  displayMinutes: number;
+  displayKcal: number;
 };
 
-export function WorkoutSheetsScreen() {
-  const { isDark } = useAppTheme();
-  const primarySheet = workoutSheets[0];
-  const todaySession = primarySheet.sessions[0];
-  const alternateSessions = workoutSheets.flatMap((sheet) =>
-    sheet.sessions
-      .filter((s) => s.id !== todaySession.id)
-      .map((s) => ({ sheet, session: s })),
+type CurrentWorkoutData = Awaited<ReturnType<typeof getCurrentWorkout>>;
+
+const WORKOUT_IMAGES = [
+  require("@/assets/images/photoshoot/photoshoot-21.jpeg"),
+  require("@/assets/images/photoshoot/photoshoot-31.jpeg"),
+  require("@/assets/images/photoshoot/photoshoot-28.jpeg"),
+  require("@/assets/images/photoshoot/photoshoot-17.jpeg"),
+  require("@/assets/images/photoshoot/photoshoot-6.jpeg"),
+  require("@/assets/images/photoshoot/photoshoot-29.jpeg"),
+  require("@/assets/images/photoshoot/photoshoot-24.jpeg"),
+  require("@/assets/images/photoshoot/photoshoot-30.jpeg"),
+];
+
+const WORKOUT_CARD_META = [
+  { title: "Peito e Triceps", exercises: 5, minutes: 55, kcal: 380 },
+  { title: "Costas e Biceps", exercises: 6, minutes: 52, kcal: 350 },
+  { title: "Pernas e Gluteos", exercises: 7, minutes: 65, kcal: 520 },
+  { title: "Ombros e Trapezio", exercises: 5, minutes: 45, kcal: 290 },
+  { title: "Core e Cardio", exercises: 6, minutes: 35, kcal: 280 },
+];
+
+const MUSCLE_LABELS: Record<string, string> = {
+  Abdomen: "Abdomen",
+  Biceps: "Biceps",
+  Core: "Core",
+  Dorsais: "Costas",
+  Gluteos: "Gluteos",
+  Ombros: "Ombros",
+  Panturrilhas: "Panturrilhas",
+  Peitoral: "Peito",
+  Pernas: "Pernas",
+  Posterior: "Posterior",
+  Quadriceps: "Quadriceps",
+  Triceps: "Triceps",
+};
+
+function isGenericWorkoutTitle(title: string) {
+  const normalized = title.trim().toLowerCase();
+  return (
+    normalized.startsWith("treino") || normalized.startsWith("cima e baixo")
   );
+}
 
-  const todayMuscles = [...new Set(todaySession.exercises.map((e) => e.muscle))].slice(0, 3);
-  const primaryAccent = MUSCLE_COLOR[todayMuscles[0]] ?? '#8B5CF6';
-  const previewExercises = todaySession.exercises.slice(0, 3);
-  const extraCount = Math.max(0, todaySession.exercises.length - 3);
+function getDisplayTitle(session: WorkoutSessionDTO, index: number) {
+  if (!isGenericWorkoutTitle(session.title)) return session.title;
 
-  const dividerColor = isDark ? '#1E1E1E' : '#EBEBEB';
+  if (session.muscles?.length) {
+    const visibleMuscles = session.muscles
+      .slice(0, 2)
+      .map((muscle) => MUSCLE_LABELS[muscle] ?? muscle);
+    if (visibleMuscles.length === 2)
+      return `${visibleMuscles[0]} e ${visibleMuscles[1]}`;
+    if (visibleMuscles.length === 1) return visibleMuscles[0];
+  }
+
+  return WORKOUT_CARD_META[index % WORKOUT_CARD_META.length].title;
+}
+
+function StreakStrip() {
+  const days = ["S", "T", "Q", "Q", "S", "S", "D"];
+  const status = ["done", "done", "done", "today", "", "", ""];
 
   return (
-    <AppShell title="Seus Treinos" contentClassName="pb-32">
+    <View
+      style={{
+        marginBottom: 16,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: "#222222",
+        backgroundColor: "#111111",
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+      }}
+    >
+      <AppText className="mb-3 text-[10px] font-bold uppercase tracking-[0.22em] text-text-muted">
+        Sequência desta semana
+      </AppText>
+      <View className="flex-row items-center">
+        <View className="flex-row items-center gap-2">
+          {days.map((day, index) => {
+            const isDone = status[index] === "done";
+            const isToday = status[index] === "today";
 
-      {/* ─── TREINO DE HOJE ─────────────────────── */}
-      <Animated.View entering={FadeInDown.delay(200).duration(600)} className="mb-10">
-        <Pressable
-          accessibilityRole="button"
-          style={{
-            borderRadius: 28,
-            overflow: 'hidden',
-            borderWidth: 1,
-            borderColor: isDark ? '#232323' : '#E3E3E3',
-          }}
-          onPress={() =>
-            router.push(`/(app)/workouts/${primarySheet.id}/session?sessionId=${todaySession.id}` as Href)
-          }
-        >
-          {/* ── Tinted header ── */}
-          <View style={{ backgroundColor: `${primaryAccent}10`, padding: 20, paddingBottom: 16 }}>
-            {/* Top row: badge + duration */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <View style={{ backgroundColor: `${primaryAccent}20`, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 5 }}>
-                <AppText className="text-[10px] font-bold uppercase tracking-[0.25em]" style={{ color: primaryAccent }}>
-                  Treino de Hoje
+            return (
+              <View key={`${day}-${index}`} className="items-center gap-1">
+                <AppText
+                  style={{
+                    fontSize: 9,
+                    fontWeight: isToday ? "700" : "500",
+                    color: isToday ? "#8B5CF6" : "#777777",
+                  }}
+                >
+                  {day}
                 </AppText>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Clock size={13} color={isDark ? '#666' : '#999'} weight="bold" />
-                <AppText className="text-sm font-bold text-text-muted">{todaySession.estimatedMinutes}min</AppText>
-              </View>
-            </View>
-
-            {/* Workout name + type */}
-            <AppText className="font-heading text-2xl font-bold text-text-main mb-0.5">
-              {todaySession.title}
-            </AppText>
-            <AppText className="text-xs text-text-muted mb-4">
-              {todaySession.type} · {todaySession.exercises.length} exercícios
-            </AppText>
-
-            {/* Exercise preview list */}
-            <View style={{ gap: 6 }}>
-              {previewExercises.map((exercise) => {
-                const setDef = exercise.sets[0];
-                const reps = setDef?.duration ?? `${setDef?.reps ?? '—'}`;
-                return (
-                  <View key={exercise.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 99,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: isToday
+                      ? "#8B5CF6"
+                      : isDone
+                        ? "rgba(139,92,246,0.20)"
+                        : "#181818",
+                    borderWidth: 1,
+                    borderColor: isToday
+                      ? "#8B5CF6"
+                      : isDone
+                        ? "rgba(139,92,246,0.24)"
+                        : "#262626",
+                  }}
+                >
+                  {isDone ? (
+                    <Check size={10} color="#A78BFA" weight="bold" />
+                  ) : null}
+                  {isToday ? (
                     <View
                       style={{
                         width: 5,
                         height: 5,
-                        borderRadius: 2.5,
-                        backgroundColor: MUSCLE_COLOR[exercise.muscle] ?? '#8B5CF6',
+                        borderRadius: 99,
+                        backgroundColor: "#FFFFFF",
                       }}
                     />
-                    <AppText className="text-sm text-text-main flex-1" numberOfLines={1}>
-                      {exercise.name}
-                    </AppText>
-                    <AppText className="text-xs text-text-muted">
-                      {exercise.sets.length}×{reps}
-                    </AppText>
-                  </View>
-                );
-              })}
-              {extraCount > 0 && (
-                <AppText className="text-xs text-text-muted mt-1">
-                  +{extraCount} exercícios
-                </AppText>
-              )}
+                  ) : null}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+        <View className="flex-1" />
+        <View
+          className="flex-row items-center gap-1.5 rounded-full px-3 py-1"
+          style={{ backgroundColor: "rgba(251,191,36,0.10)" }}
+        >
+          <Flame size={12} color="#FBBF24" weight="fill" />
+          <AppText
+            className="text-[11px] font-bold"
+            style={{ color: "#FBBF24" }}
+          >
+            3 dias
+          </AppText>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function ImageScrim() {
+  return (
+    <Svg pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      <Defs>
+        <SvgLinearGradient id="verticalScrim" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#000000" stopOpacity="0.02" />
+          <Stop offset="0.24" stopColor="#000000" stopOpacity="0.06" />
+          <Stop offset="0.54" stopColor="#000000" stopOpacity="0.28" />
+          <Stop offset="1" stopColor="#000000" stopOpacity="0.74" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="horizontalScrim" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0" stopColor="#000000" stopOpacity="0.28" />
+          <Stop offset="0.48" stopColor="#000000" stopOpacity="0.06" />
+          <Stop offset="1" stopColor="#000000" stopOpacity="0.14" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="bottomFade" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#08080A" stopOpacity="0" />
+          <Stop offset="0.30" stopColor="#08080A" stopOpacity="0.16" />
+          <Stop offset="0.66" stopColor="#08080A" stopOpacity="0.48" />
+          <Stop offset="1" stopColor="#08080A" stopOpacity="0.82" />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill="url(#verticalScrim)" />
+      <Rect
+        x="0"
+        y="0"
+        width="100%"
+        height="100%"
+        fill="url(#horizontalScrim)"
+      />
+      <Rect x="0" y="28%" width="100%" height="72%" fill="url(#bottomFade)" />
+    </Svg>
+  );
+}
+
+function DrawerHeaderScrim() {
+  return (
+    <Svg pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      <Defs>
+        <SvgLinearGradient id="drawerHeaderMain" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#000000" stopOpacity="0.04" />
+          <Stop offset="0.42" stopColor="#000000" stopOpacity="0.22" />
+          <Stop offset="1" stopColor="#000000" stopOpacity="0.84" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="drawerHeaderBottom" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#08080A" stopOpacity="0" />
+          <Stop offset="0.30" stopColor="#08080A" stopOpacity="0.20" />
+          <Stop offset="0.68" stopColor="#08080A" stopOpacity="0.56" />
+          <Stop offset="1" stopColor="#08080A" stopOpacity="0.86" />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect
+        x="0"
+        y="0"
+        width="100%"
+        height="100%"
+        fill="url(#drawerHeaderMain)"
+      />
+      <Rect
+        x="0"
+        y="28%"
+        width="100%"
+        height="72%"
+        fill="url(#drawerHeaderBottom)"
+      />
+    </Svg>
+  );
+}
+
+function CardLight() {
+  return (
+    <Svg pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      <Defs>
+        <RadialGradient id="topRightLight" cx="92%" cy="8%" rx="52%" ry="48%">
+          <Stop offset="0" stopColor="#A78BFA" stopOpacity="0.18" />
+          <Stop offset="0.36" stopColor="#8B5CF6" stopOpacity="0.08" />
+          <Stop offset="1" stopColor="#8B5CF6" stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id="bottomLeftLight" cx="6%" cy="96%" rx="40%" ry="36%">
+          <Stop offset="0" stopColor="#8B5CF6" stopOpacity="0.12" />
+          <Stop offset="0.44" stopColor="#8B5CF6" stopOpacity="0.05" />
+          <Stop offset="1" stopColor="#8B5CF6" stopOpacity="0" />
+        </RadialGradient>
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill="url(#topRightLight)" />
+      <Rect
+        x="0"
+        y="0"
+        width="100%"
+        height="100%"
+        fill="url(#bottomLeftLight)"
+      />
+    </Svg>
+  );
+}
+
+function getProgress(data: CurrentWorkoutData | undefined, sessionId: string) {
+  const progress = data?.progressBySession?.[sessionId];
+  if (!progress?.completed_sets) return 0;
+  const total = Object.values(progress.completed_sets).reduce(
+    (sum: number, value) => sum + Number(value || 0),
+    0,
+  );
+  return total;
+}
+
+function getTotalSets(session: WorkoutSessionDTO) {
+  return session.exercises.reduce(
+    (sum, exercise) => sum + exercise.sets.length,
+    0,
+  );
+}
+
+function NativeWorkoutSheet({
+  preview,
+  visible,
+  onClose,
+  onStart,
+}: {
+  preview: WorkoutPreview | null;
+  visible: boolean;
+  onClose: () => void;
+  onStart: () => void;
+}) {
+  if (!preview) return null;
+
+  return (
+    <WorkoutNativeBottomSheet
+      visible={visible}
+      onVisibleChange={(next) => !next && onClose()}
+    >
+      <WorkoutOverviewContent
+        preview={preview}
+        onClose={onClose}
+        onStart={onStart}
+      />
+    </WorkoutNativeBottomSheet>
+  );
+}
+
+function WorkoutOverviewContent({
+  preview,
+  onClose,
+  onStart,
+}: {
+  preview: WorkoutPreview;
+  onClose: () => void;
+  onStart: () => void;
+}) {
+  const { isDark } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const {
+    session,
+    image,
+    label,
+    displayTitle,
+    displayExercises,
+    displayMinutes,
+    displayKcal,
+  } = preview;
+  const muscles = [
+    ...new Set(session.exercises.map((exercise) => exercise.muscle)),
+  ].slice(0, 4);
+
+  return (
+    <View
+      style={{
+        backgroundColor: isDark ? "#090909" : "#FFFFFF",
+        maxHeight: "100%",
+      }}
+    >
+      <View
+        style={{
+          height: 226,
+          overflow: "hidden",
+          borderBottomWidth: 1,
+          borderBottomColor: "rgba(255,255,255,0.10)",
+        }}
+      >
+        <Image
+          source={image}
+          contentFit="cover"
+          contentPosition="center"
+          style={StyleSheet.absoluteFillObject}
+        />
+        <DrawerHeaderScrim />
+        <View style={{ position: "absolute", left: 20, right: 20, bottom: 16 }}>
+          <View className="mb-2 flex-row gap-2">
+            <View
+              style={{
+                borderRadius: 999,
+                backgroundColor: "rgba(18,12,28,0.42)",
+                borderWidth: 1,
+                borderColor: "rgba(139,92,246,0.34)",
+                paddingHorizontal: 9,
+                paddingVertical: 3,
+              }}
+            >
+              <AppText className="text-[9px] font-bold uppercase tracking-[0.12em] text-brand-secondary">
+                {label}
+              </AppText>
+            </View>
+            <View
+              style={{
+                borderRadius: 999,
+                backgroundColor: "rgba(255,255,255,0.10)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.12)",
+                paddingHorizontal: 9,
+                paddingVertical: 3,
+              }}
+            >
+              <AppText className="text-[9px] font-bold uppercase tracking-[0.08em] text-white/75">
+                {preview.sheet.level}
+              </AppText>
             </View>
           </View>
-
-          {/* ── Bottom row: muscle dots + play ── */}
-          <View
-            style={{
-              backgroundColor: isDark ? '#111111' : '#F7F7F7',
-              paddingHorizontal: 20,
-              paddingVertical: 14,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
+          <AppText
+            className="font-heading text-[30px] font-bold text-white"
+            style={{ letterSpacing: -0.5 }}
           >
-            <View style={{ flexDirection: 'row', gap: 12, flexShrink: 1, flexWrap: 'wrap' }}>
-              {todayMuscles.map((m) => (
-                <View key={m} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <View
-                    style={{ height: 7, width: 7, borderRadius: 3.5, backgroundColor: MUSCLE_COLOR[m] ?? '#8B5CF6' }}
-                  />
-                  <AppText className="text-xs text-text-muted">{m}</AppText>
-                </View>
-              ))}
-            </View>
+            {displayTitle}
+          </AppText>
+          <View className="mt-1 flex-row flex-wrap items-center gap-x-3 gap-y-1">
+            <AppText className="text-xs font-medium text-white/55">
+              {displayExercises} exercícios
+            </AppText>
+            <AppText className="text-xs font-medium text-white/55">
+              ~{displayMinutes} min
+            </AppText>
+            <AppText className="text-xs font-medium text-white/55">
+              {displayKcal} kcal
+            </AppText>
+          </View>
+          <View className="mt-3 flex-row flex-wrap gap-2">
+            {muscles.map((muscle) => (
+              <View
+                key={muscle}
+                style={{
+                  borderRadius: 999,
+                  backgroundColor: "rgba(139,92,246,0.14)",
+                  borderWidth: 1,
+                  borderColor: "rgba(139,92,246,0.20)",
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                }}
+              >
+                <AppText className="text-[9px] font-bold uppercase tracking-[0.08em] text-brand-secondary">
+                  {muscle}
+                </AppText>
+              </View>
+            ))}
+          </View>
+        </View>
+      </View>
 
-            <Pressable
-              accessibilityRole="button"
-              className="w-14 h-14 rounded-full bg-brand-primary items-center justify-center shadow-lg shadow-brand-primary/40"
-              style={{ marginLeft: 12 }}
-              onPress={() =>
-                router.push(`/(app)/workouts/${primarySheet.id}/session?sessionId=${todaySession.id}` as Href)
+      <View style={{ flexShrink: 1, minHeight: 0 }}>
+        <ScrollView
+          bounces={false}
+          contentContainerStyle={{
+            paddingHorizontal: 20,
+            paddingTop: 14,
+            paddingBottom: 6,
+          }}
+          showsVerticalScrollIndicator={false}
+        >
+          <AppText className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
+            Exercícios
+          </AppText>
+          {session.exercises.slice(0, 8).map((exercise, index) => (
+            <View
+              key={exercise.id}
+              className="flex-row items-center gap-3 py-3"
+              style={
+                index < Math.min(8, session.exercises.length) - 1
+                  ? {
+                      borderBottomWidth: 1,
+                      borderBottomColor: isDark ? "#1A1A1A" : "#ECECEC",
+                    }
+                  : undefined
               }
             >
-              <Play size={24} color="#FFFFFF" weight="fill" style={{ marginLeft: 3 }} />
-            </Pressable>
-          </View>
-        </Pressable>
-      </Animated.View>
+              <View
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(139,92,246,0.12)",
+                  borderWidth: 1,
+                  borderColor: "rgba(139,92,246,0.18)",
+                }}
+              >
+                <AppText className="text-[11px] font-bold text-brand-secondary">
+                  {index + 1}
+                </AppText>
+              </View>
+              <AppText
+                className="flex-1 text-sm font-semibold text-text-main"
+                numberOfLines={1}
+              >
+                {exercise.name}
+              </AppText>
+              <AppText className="text-[11px] text-text-muted">
+                {exercise.sets.length} séries
+              </AppText>
+            </View>
+          ))}
+          <View className="h-2" />
+        </ScrollView>
+      </View>
 
-      {/* ─── MAIS TREINOS ───────────────────────── */}
-      {alternateSessions.length > 0 && (
-        <Animated.View entering={FadeInDown.delay(400).duration(600)}>
-          <View className="flex-row items-end justify-between border-b border-border-subtle pb-4 mb-4">
-            <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">
-              Mais Treinos
-            </AppText>
-            <AppText className="text-xs text-text-muted">{alternateSessions.length} disponíveis</AppText>
-          </View>
+      <View
+        style={{
+          borderTopWidth: 1,
+          borderTopColor: isDark ? "#1A1A1A" : "#ECECEC",
+          paddingHorizontal: 20,
+          paddingTop: 16,
+          paddingBottom: Math.max(insets.bottom, 12),
+        }}
+      >
+        <View className="flex-row gap-3">
+          <AppButton
+            className="w-[52px] px-0"
+            onPress={onClose}
+            size="md"
+            variant="secondary"
+          >
+            <X size={18} color={isDark ? "#FFFFFF" : "#111111"} weight="bold" />
+          </AppButton>
+          <AppButton
+            className="flex-1"
+            leftIcon={<Play size={16} color="#FFFFFF" weight="fill" />}
+            onPress={onStart}
+            variant="primary"
+          >
+            Começar treino
+          </AppButton>
+        </View>
+      </View>
+    </View>
+  );
+}
 
-          <View style={{ gap: 10 }}>
-            {alternateSessions.map(({ sheet, session }) => {
-              const sessionMuscles = [...new Set(session.exercises.map((e) => e.muscle))].slice(0, 2);
-              const exercisePreview = session.exercises.slice(0, 2).map((e) => e.name).join(', ');
-              return (
-                <Pressable
-                  key={`${sheet.id}-${session.id}`}
-                  accessibilityRole="button"
+function WorkoutPhotoCard({
+  item,
+  featured,
+  onPress,
+}: {
+  item: WorkoutPreview;
+  featured?: boolean;
+  onPress: () => void;
+}) {
+  const {
+    session,
+    image,
+    label,
+    progress,
+    displayTitle,
+    displayExercises,
+    displayMinutes,
+    displayKcal,
+  } = item;
+  const totalSets = session.exercises.reduce(
+    (sum, exercise) => sum + exercise.sets.length,
+    0,
+  );
+  const pct =
+    totalSets > 0 ? Math.min(100, Math.round((progress / totalSets) * 100)) : 0;
+  const radius = featured ? 24 : 18;
+  const aspectRatio = featured ? 334 / 210 : 334 / 164;
+  const isDone = pct >= 100;
+
+  return (
+    <View
+      style={{
+        borderRadius: radius,
+        width: "100%",
+        shadowColor: "#000000",
+        shadowOpacity: 0.46,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 10 },
+      }}
+    >
+      <Pressable
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => ({
+          borderRadius: radius,
+          width: "100%",
+          aspectRatio,
+          minHeight: featured ? 210 : 164,
+          overflow: "hidden",
+          backgroundColor: "#060606",
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.18)",
+          transform: [{ scale: pressed ? 0.985 : 1 }],
+        })}
+      >
+        <ImageBackground
+          source={image}
+          resizeMode="cover"
+          imageStyle={{ borderRadius: radius }}
+          style={{ flex: 1, width: "100%" }}
+        >
+          <ImageScrim />
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.12)",
+              borderRadius: radius,
+            }}
+          />
+
+          <View
+            style={{
+              flex: 1,
+              justifyContent: "space-between",
+              paddingHorizontal: featured ? 20 : 16,
+              paddingTop: featured ? 20 : 16,
+              paddingBottom: featured ? 22 : 18,
+            }}
+          >
+            <View className="flex-row items-start justify-between">
+              <View
+                style={{
+                  borderRadius: 99,
+                  backgroundColor: "rgba(10,10,12,0.38)",
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderWidth: 1,
+                  borderColor: "rgba(139,92,246,0.28)",
+                }}
+              >
+                <AppText className="text-[9px] font-bold uppercase tracking-[0.14em] text-brand-secondary">
+                  {label}
+                </AppText>
+              </View>
+              {isDone ? (
+                <View
                   style={{
-                    borderRadius: 20,
-                    overflow: 'hidden',
+                    borderRadius: 99,
+                    backgroundColor: "rgba(8,12,10,0.42)",
+                    paddingHorizontal: 9,
+                    paddingVertical: 4,
                     borderWidth: 1,
-                    borderColor: dividerColor,
+                    borderColor: "rgba(34,197,94,0.24)",
                   }}
-                  onPress={() =>
-                    router.push(`/(app)/workouts/${sheet.id}/session?sessionId=${session.id}` as Href)
-                  }
                 >
-                  <View
-                    style={{
-                      backgroundColor: isDark ? '#111111' : '#F7F7F7',
-                      padding: 16,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                    }}
+                  <AppText
+                    style={{ fontSize: 9, fontWeight: "700", color: "#22C55E" }}
                   >
-                    <View style={{ flex: 1, marginRight: 12 }}>
-                      <AppText className="font-heading text-lg font-bold text-text-main mb-0.5">
-                        {session.title}
-                      </AppText>
-                      <AppText className="text-xs text-text-muted mb-2" numberOfLines={1}>
-                        {exercisePreview}
-                        {session.exercises.length > 2 ? `… +${session.exercises.length - 2}` : ''}
-                      </AppText>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <AppText className="text-xs text-text-muted">
-                          {session.type} · {session.estimatedMinutes}min
-                        </AppText>
-                        {sessionMuscles.map((m) => (
-                          <View key={m} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                            <View style={{ height: 6, width: 6, borderRadius: 3, backgroundColor: MUSCLE_COLOR[m] ?? '#8B5CF6' }} />
-                            <AppText className="text-xs text-text-muted">{m}</AppText>
-                          </View>
-                        ))}
-                      </View>
-                    </View>
+                    CONCLUÍDO
+                  </AppText>
+                </View>
+              ) : null}
+            </View>
 
-                    {/* Muted play */}
+            <View>
+              {pct > 0 && pct < 100 ? (
+                <View style={{ marginBottom: 8 }}>
+                  <View className="mb-1 h-[3px] overflow-hidden rounded-full bg-white/20">
                     <View
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 22,
-                        backgroundColor: isDark ? '#1E1E1E' : '#E8E8E8',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Play size={18} color={isDark ? '#4A4A4A' : '#B8B8B8'} weight="fill" style={{ marginLeft: 2 }} />
-                    </View>
+                      className="h-full rounded-full bg-brand-primary"
+                      style={{ width: `${pct}%` }}
+                    />
                   </View>
-                </Pressable>
-              );
-            })}
+                  <AppText
+                    style={{ fontSize: 9, fontWeight: "700", color: "#A78BFA" }}
+                  >
+                    {pct}% CONCLUÍDO
+                  </AppText>
+                </View>
+              ) : null}
+
+              <AppText
+                className={
+                  featured
+                    ? "font-heading text-[21px] font-bold text-white"
+                    : "font-heading text-[17px] font-bold text-white"
+                }
+                numberOfLines={2}
+                style={{
+                  lineHeight: featured ? 23 : 19,
+                  letterSpacing: -0.3,
+                  textShadowColor: "rgba(0,0,0,0.72)",
+                  textShadowOffset: { width: 0, height: 2 },
+                  textShadowRadius: 18,
+                  marginBottom: 6,
+                }}
+              >
+                {displayTitle}
+              </AppText>
+
+              <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
+                <View className="flex-row items-center gap-1">
+                  <Barbell size={10} color="#8B5CF6" weight="bold" />
+                  <AppText className="text-[11px] font-medium text-white/60">
+                    {displayExercises} ex
+                  </AppText>
+                </View>
+                <View className="flex-row items-center gap-1">
+                  <Clock size={10} color="#8B5CF6" weight="bold" />
+                  <AppText className="text-[11px] font-medium text-white/60">
+                    {displayMinutes} min
+                  </AppText>
+                </View>
+                <View className="flex-row items-center gap-1">
+                  <Flame size={10} color="#8B5CF6" weight="fill" />
+                  <AppText className="text-[11px] font-medium text-white/60">
+                    {displayKcal} kcal
+                  </AppText>
+                </View>
+              </View>
+            </View>
           </View>
-        </Animated.View>
-      )}
-    </AppShell>
+        </ImageBackground>
+      </Pressable>
+    </View>
+  );
+}
+
+export function WorkoutSheetsScreen() {
+  const { isDark } = useAppTheme();
+  const { session } = useAuthStore();
+  const [isCreating, setIsCreating] = useState(false);
+  const [query, setQuery] = useState("");
+  const [preview, setPreview] = useState<WorkoutPreview | null>(null);
+  const [notifVisible, setNotifVisible] = useState(false);
+
+  const { data: evaluations } = useQuery({
+    queryKey: ["assessments"],
+    queryFn: () => getStudentEvaluations(session?.token!),
+    enabled: !!session?.token,
+  });
+  const { data, isLoading } = useQuery({
+    queryKey: ["student-workout-current"],
+    queryFn: () => getCurrentWorkout(session?.token!),
+    enabled: !!session?.token,
+  });
+
+  const primarySheet = (data?.workout || workoutSheets[0]) as WorkoutSheetDTO;
+  const hasWorkoutAccess = data?.hasAccess !== false;
+  const workoutUpgradeUrl = data?.whatsappUpgradeUrl;
+  const todaySession =
+    primarySheet?.sessions.find((s) => s.id === data?.todaySessionId) ||
+    primarySheet?.sessions[0] ||
+    null;
+  const hasWorkout = Boolean(primarySheet && todaySession);
+  const questionnaire = session?.released_questionnaire;
+  const hasSubmittedEvaluation = evaluations?.some(
+    (ev: EvaluationDTO) =>
+      (ev.questionnaire.id === questionnaire?.id ||
+        (ev.questionnaire as any)._id === questionnaire?.id) &&
+      ["answered", "analysis", "done"].includes(ev.status),
+  );
+  const showQuestionnaire = Boolean(questionnaire && !hasSubmittedEvaluation);
+
+  const workoutItems = useMemo<WorkoutPreview[]>(() => {
+    if (!primarySheet) return [];
+    return primarySheet.sessions.map((workoutSession, index) => {
+      const meta = WORKOUT_CARD_META[index % WORKOUT_CARD_META.length];
+      const rawExerciseCount = workoutSession.exercises?.length ?? 0;
+      return {
+        sheet: primarySheet,
+        session: workoutSession,
+        image: WORKOUT_IMAGES[index % WORKOUT_IMAGES.length],
+        label: `Treino ${String.fromCharCode(65 + index)}`,
+        progress: getProgress(data, workoutSession.id),
+        displayTitle: getDisplayTitle(workoutSession, index),
+        displayExercises:
+          rawExerciseCount > 2 ? rawExerciseCount : meta.exercises,
+        displayMinutes:
+          workoutSession.estimatedMinutes > 20
+            ? workoutSession.estimatedMinutes
+            : meta.minutes,
+        displayKcal: meta.kcal,
+      };
+    });
+  }, [data, primarySheet]);
+
+  const nextWorkout =
+    workoutItems.find(
+      (item) => item.progress > 0 && item.progress < getTotalSets(item.session),
+    ) ??
+    workoutItems.find((item) => item.progress < getTotalSets(item.session)) ??
+    workoutItems.find((item) => item.session.id === todaySession?.id) ??
+    workoutItems[0] ??
+    null;
+
+  const filteredWorkouts = workoutItems.filter((item) => {
+    if (item.session.id === nextWorkout?.session.id && !query) return false;
+    const search = query.trim().toLowerCase();
+    const searchMatch =
+      !search ||
+      item.session.title.toLowerCase().includes(search) ||
+      item.session.type.toLowerCase().includes(search) ||
+      item.session.exercises.some((exercise) =>
+        exercise.name.toLowerCase().includes(search),
+      );
+    return searchMatch;
+  });
+
+  const handleStartAssessment = async () => {
+    if (!session?.token || !session?.released_questionnaire?.id) return;
+    try {
+      setIsCreating(true);
+      const evalData = await createEvaluation(
+        session.token,
+        session.released_questionnaire.id,
+      );
+      router.push(`/(app)/assessments/${evalData.id}` as Href);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const startWorkout = (item: WorkoutPreview) => {
+    setPreview(null);
+    router.push(
+      `/(app)/workouts/${item.sheet.id}/session?sessionId=${item.session.id}` as Href,
+    );
+  };
+
+  if (!isLoading && !hasWorkoutAccess) {
+    return (
+      <EmptyPlanState
+        eyebrow="Acesso restrito"
+        title="Seu plano não inclui treinos"
+        subtitle="Para liberar esta aba, faça upgrade do seu plano com nossa equipe pelo WhatsApp."
+        action={
+          workoutUpgradeUrl
+            ? {
+                label: "Falar com a equipe",
+                onPress: () => Linking.openURL(workoutUpgradeUrl),
+              }
+            : null
+        }
+      />
+    );
+  }
+
+  if (!isLoading && !hasWorkout) {
+    if (showQuestionnaire) {
+      return (
+        <EmptyPlanState
+          eyebrow="Ação necessária"
+          title="Responda a avaliação"
+          subtitle="Antes de montar seu treino, nossa equipe precisa das suas respostas para personalizar tudo do jeito certo."
+          action={{
+            label: isCreating ? "Carregando..." : "Responder agora",
+            onPress: handleStartAssessment,
+          }}
+        />
+      );
+    }
+
+    return (
+      <EmptyPlanState
+        eyebrow="Em preparação"
+        title="Seu treino está sendo montado"
+        subtitle="Nossa equipe está elaborando seu plano personalizado. Ele aparecerá aqui assim que estiver pronto."
+      />
+    );
+  }
+
+  if (!hasWorkout) {
+    return (
+      <EmptyPlanState
+        eyebrow="Carregando"
+        title="Buscando seu treino..."
+        subtitle="Aguarde um momento."
+      />
+    );
+  }
+
+  return (
+    <>
+      <View className="flex-1 bg-bg-base">
+        <SafeAreaView className="flex-1" edges={["top", "bottom"]}>
+          <PageHeader
+            title="Treinos"
+            subtitle="Sua semana de performance"
+            onNotificationPress={() => setNotifVisible(true)}
+          />
+
+          <ScrollView
+            alwaysBounceVertical={false}
+            bounces
+            contentContainerStyle={{
+              paddingHorizontal: 24,
+              paddingTop: 8,
+              paddingBottom: 140,
+            }}
+            keyboardShouldPersistTaps="handled"
+            overScrollMode="never"
+            showsVerticalScrollIndicator={false}
+          >
+            <StreakStrip />
+
+            <View className="mb-6">
+              <View className="mb-3 flex-row items-end justify-between">
+                <AppText className="text-[11px] font-bold uppercase tracking-[0.25em] text-text-muted">
+                  Próximo treino
+                </AppText>
+                <AppText className="text-xs text-text-muted">
+                  {nextWorkout?.session.days ?? todaySession?.days}
+                </AppText>
+              </View>
+              {nextWorkout ? (
+                <WorkoutPhotoCard
+                  item={nextWorkout}
+                  featured
+                  onPress={() => setPreview(nextWorkout)}
+                />
+              ) : (
+                <View
+                  style={{
+                    width: "100%",
+                    aspectRatio: 334 / 210,
+                    minHeight: 210,
+                    borderRadius: 24,
+                    backgroundColor: "#111111",
+                  }}
+                />
+              )}
+            </View>
+
+            <View className="mb-5">
+              <View
+                className="mb-3 flex-row items-center rounded-2xl bg-bg-surface border border-border-subtle px-4"
+                style={{ height: 50 }}
+              >
+                <MagnifyingGlass
+                  size={17}
+                  color={isDark ? "#666666" : "#888888"}
+                  weight="bold"
+                />
+                <TextInput
+                  className="ml-3 flex-1 text-text-main"
+                  cursorColor="#8B5CF6"
+                  onChangeText={setQuery}
+                  placeholder="Buscar treino ou exercício"
+                  placeholderTextColor={isDark ? "#666666" : "#999999"}
+                  style={{
+                    fontSize: 15,
+                    height: 48,
+                    lineHeight: 20,
+                    paddingTop: 0,
+                    paddingBottom: 0,
+                    textAlignVertical: "center",
+                  }}
+                  value={query}
+                />
+              </View>
+            </View>
+
+            <View>
+              <View className="mb-3 flex-row items-end justify-between border-b border-border-subtle pb-3">
+                <AppText className="text-[11px] font-bold uppercase tracking-[0.25em] text-text-muted">
+                  {query ? "Resultados" : "Todos os treinos"}
+                </AppText>
+                <AppText className="text-xs text-text-muted">
+                  {filteredWorkouts.length} disponíveis
+                </AppText>
+              </View>
+
+              <View style={{ gap: 12 }}>
+                {filteredWorkouts.map((item) => (
+                  <WorkoutPhotoCard
+                    key={item.session.id}
+                    item={item}
+                    onPress={() => setPreview(item)}
+                  />
+                ))}
+              </View>
+
+              {filteredWorkouts.length === 0 ? (
+                <View className="items-center py-12">
+                  <AppText className="text-center text-sm text-text-muted">
+                    Nenhum treino encontrado para essa busca.
+                  </AppText>
+                </View>
+              ) : null}
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </View>
+
+      <NativeWorkoutSheet
+        preview={preview}
+        visible={Boolean(preview)}
+        onClose={() => setPreview(null)}
+        onStart={() => preview && startWorkout(preview)}
+      />
+
+      <NotificationsModal visible={notifVisible} onClose={() => setNotifVisible(false)} />
+    </>
   );
 }

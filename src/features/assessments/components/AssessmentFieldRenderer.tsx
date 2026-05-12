@@ -1,30 +1,27 @@
 import { CheckSquare, RadioButton, Square } from 'phosphor-react-native';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
 import { AppText } from '@/src/shared/components/ui/AppText';
-import { useAppTheme } from '@/src/shared/theme/appTheme';
-import { cn } from '@/src/shared/utils/cn';
 
-import { AssessmentAnswerValue, AssessmentField } from '../types';
+import { type AssessmentAnswerValue, type AssessmentField } from '../types';
 import { getFieldKeyboardType, isAnswerFilled } from '../utils';
 
-type AssessmentFieldRendererProps = {
+type Props = {
   field: AssessmentField;
   value?: AssessmentAnswerValue;
   onChange: (value: AssessmentAnswerValue) => void;
   onToggleOption: (option: string) => void;
 };
 
-export function AssessmentFieldRenderer({ field, value, onChange, onToggleOption }: AssessmentFieldRendererProps) {
-  const { isDark } = useAppTheme();
+export function AssessmentFieldRenderer({ field, value, onChange, onToggleOption }: Props) {
   const missing = field.required && !isAnswerFilled(value);
-  const textValue = Array.isArray(value) ? value.join(', ') : value ?? '';
+  const textValue = Array.isArray(value) ? value.join(', ') : (value ?? '');
 
   if (field.type === 'paragraph') {
     return (
-      <View className="mb-4 px-1">
-        <AppText className="text-base leading-relaxed text-text-main">{field.label}</AppText>
+      <View style={{ paddingVertical: 4, paddingHorizontal: 4 }}>
+        <AppText style={{ fontSize: 14, color: '#666666', lineHeight: 20 }}>{field.label}</AppText>
       </View>
     );
   }
@@ -32,23 +29,40 @@ export function AssessmentFieldRenderer({ field, value, onChange, onToggleOption
   if (field.type === 'select' || field.type === 'radio') {
     return (
       <FieldShell field={field} missing={missing}>
-        <View className="gap-2">
+        <View style={{ gap: 7 }}>
           {field.options?.map((option) => {
             const active = value === option;
             return (
               <Pressable
                 key={option}
                 accessibilityRole="button"
-                className={cn(
-                  'min-h-[52px] flex-row items-center rounded-2xl border px-4',
-                  active ? 'border-brand-primary bg-brand-primary/15' : 'border-border-subtle bg-bg-base',
-                )}
+                style={{
+                  minHeight: 52,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: active ? '#8B5CF6' : '#1F1F23',
+                  backgroundColor: active ? 'rgba(139,92,246,0.12)' : 'transparent',
+                  paddingHorizontal: 14,
+                }}
                 onPress={() => onChange(option)}
               >
-                {field.type === 'radio' && (
-                  <RadioButton color={active ? '#A78BFA' : '#71717A'} size={19} weight={active ? 'fill' : 'regular'} />
-                )}
-                <AppText className={cn('ml-3 flex-1 text-sm font-semibold', active ? 'text-brand-secondary' : 'text-text-muted')}>
+                <RadioButton
+                  color={active ? '#A78BFA' : '#444444'}
+                  size={18}
+                  weight={active ? 'fill' : 'regular'}
+                />
+                <AppText
+                  style={{
+                    flex: 1,
+                    fontSize: 14,
+                    fontWeight: '500',
+                    color: active ? '#C4B5FD' : '#888888',
+                    lineHeight: 18,
+                  }}
+                >
                   {option}
                 </AppText>
               </Pressable>
@@ -63,25 +77,40 @@ export function AssessmentFieldRenderer({ field, value, onChange, onToggleOption
     const values = Array.isArray(value) ? value : [];
     return (
       <FieldShell field={field} missing={missing}>
-        <View className="gap-2">
+        <View style={{ gap: 7 }}>
           {field.options?.map((option) => {
             const active = values.includes(option);
             return (
               <Pressable
                 key={option}
                 accessibilityRole="button"
-                className={cn(
-                  'min-h-[52px] flex-row items-center rounded-2xl border px-4',
-                  active ? 'border-brand-primary bg-brand-primary/15' : 'border-border-subtle bg-bg-base',
-                )}
+                style={{
+                  minHeight: 52,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: active ? '#8B5CF6' : '#1F1F23',
+                  backgroundColor: active ? 'rgba(139,92,246,0.12)' : 'transparent',
+                  paddingHorizontal: 14,
+                }}
                 onPress={() => onToggleOption(option)}
               >
                 {active ? (
-                  <CheckSquare color="#A78BFA" size={21} weight="fill" />
+                  <CheckSquare color="#A78BFA" size={19} weight="fill" />
                 ) : (
-                  <Square color="#71717A" size={21} weight="regular" />
+                  <Square color="#444444" size={19} weight="regular" />
                 )}
-                <AppText className={cn('ml-3 flex-1 text-sm font-semibold', active ? 'text-brand-secondary' : 'text-text-muted')}>
+                <AppText
+                  style={{
+                    flex: 1,
+                    fontSize: 14,
+                    fontWeight: '500',
+                    color: active ? '#C4B5FD' : '#888888',
+                    lineHeight: 18,
+                  }}
+                >
                   {option}
                 </AppText>
               </Pressable>
@@ -94,39 +123,114 @@ export function AssessmentFieldRenderer({ field, value, onChange, onToggleOption
 
   return (
     <FieldShell field={field} missing={missing}>
-      <TextInput
-        className={cn(
-          'rounded-2xl border border-border-subtle bg-bg-base px-4 py-4 font-sans text-base',
-          field.type === 'long_text' && 'min-h-[132px]',
-        )}
-        style={{ color: isDark ? '#FFFFFF' : '#111111' }}
-        keyboardType={getFieldKeyboardType(field)}
-        multiline={field.type === 'long_text'}
-        onChangeText={(nextValue) => onChange(nextValue)}
-        placeholder="Digite aqui"
-        placeholderTextColor="#71717A"
-        returnKeyType={field.type === 'long_text' ? 'default' : 'done'}
-        textAlignVertical={field.type === 'long_text' ? 'top' : 'center'}
-        value={textValue}
-      />
+      <FocusableInput field={field} value={textValue} onChange={onChange} />
     </FieldShell>
   );
 }
 
-function FieldShell({ children, field, missing }: { children: ReactNode; field: AssessmentField; missing: boolean }) {
+function FocusableInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: AssessmentField;
+  value: string;
+  onChange: (v: AssessmentAnswerValue) => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const isLong = field.type === 'long_text';
+
   return (
-    <View className="rounded-[24px] border border-border-subtle bg-bg-surface p-4">
-      <View className="mb-4 flex-row items-start justify-between gap-3">
-        <View className="flex-1">
-          <AppText className="text-base font-semibold leading-snug text-text-main">{field.label}</AppText>
-          <AppText className="mt-1 text-xs font-bold text-text-muted">
+    <TextInput
+      keyboardType={getFieldKeyboardType(field)}
+      multiline={isLong}
+      onChangeText={onChange}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      placeholder="Digite aqui"
+      placeholderTextColor="#2A2A2A"
+      returnKeyType={isLong ? 'default' : 'done'}
+      textAlignVertical={isLong ? 'top' : 'center'}
+      value={value}
+      style={{
+        borderWidth: 1,
+        borderColor: focused ? '#8B5CF6' : '#1F1F23',
+        borderRadius: 12,
+        height: isLong ? undefined : 52,
+        minHeight: isLong ? 120 : undefined,
+        paddingHorizontal: 16,
+        paddingVertical: isLong ? 14 : 0,
+        color: '#FFFFFF',
+        fontSize: 15,
+        fontWeight: '500',
+        letterSpacing: -0.1,
+        ...(focused && {
+          shadowColor: '#8B5CF6',
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.2,
+          shadowRadius: 10,
+        }),
+      }}
+    />
+  );
+}
+
+function FieldShell({
+  children,
+  field,
+  missing,
+}: {
+  children: ReactNode;
+  field: AssessmentField;
+  missing: boolean;
+}) {
+  return (
+    <View
+      style={{
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: missing ? 'rgba(251,191,36,0.20)' : '#181818',
+        backgroundColor: '#0C0C0C',
+        padding: 16,
+      }}
+    >
+      {/* Label row */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          marginBottom: 12,
+        }}
+      >
+        <AppText
+          style={{
+            flex: 1,
+            fontSize: 15,
+            fontWeight: '600',
+            color: '#EDEDED',
+            lineHeight: 20,
+            paddingRight: 12,
+          }}
+        >
+          {field.label}
+        </AppText>
+        {missing ? (
+          <View
+            style={{
+              borderRadius: 99,
+              backgroundColor: 'rgba(251,191,36,0.10)',
+              paddingHorizontal: 10,
+              paddingVertical: 3,
+              flexShrink: 0,
+            }}
+          >
+            <AppText style={{ fontSize: 10, fontWeight: '700', color: '#FBBF24' }}>Falta</AppText>
+          </View>
+        ) : (
+          <AppText style={{ fontSize: 10, fontWeight: '600', color: '#3A3A3A', marginTop: 2, flexShrink: 0 }}>
             {field.required ? 'Obrigatório' : 'Opcional'}
           </AppText>
-        </View>
-        {missing && (
-          <View className="rounded-full bg-amber-400/10 px-3 py-1">
-            <AppText className="text-xs font-bold text-amber-400">Falta</AppText>
-          </View>
         )}
       </View>
       {children}

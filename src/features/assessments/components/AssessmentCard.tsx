@@ -1,8 +1,7 @@
-import { CalendarCheck, CaretRight, ClipboardText, UserCircle } from 'phosphor-react-native';
+import { CaretRight, CheckCircle, Clock, WarningCircle } from 'phosphor-react-native';
 import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/src/shared/components/ui/AppText';
-import { cn } from '@/src/shared/utils/cn';
 
 import { Assessment, AssessmentDraft } from '../types';
 import { getAssessmentProgress, getStatusLabel, getStatusTone } from '../utils';
@@ -15,62 +14,129 @@ type AssessmentCardProps = {
 
 export function AssessmentCard({ assessment, draft, onPress }: AssessmentCardProps) {
   const tone = getStatusTone(assessment.status);
-  const progress = getAssessmentProgress(assessment, draft);
+  const isSubmitted = ['analysis', 'answered', 'done'].includes(assessment.status);
+  const isDone = assessment.status === 'done';
+  const isScheduled = assessment.status === 'scheduled';
+  const progress = isSubmitted ? 100 : getAssessmentProgress(assessment, draft);
+
+  const actionLabel = isDone
+    ? 'Ver parecer'
+    : isSubmitted
+      ? 'Em análise'
+      : isScheduled
+        ? 'Agendada'
+        : progress > 0
+          ? 'Continuar'
+          : 'Começar';
+
+  /* ── Build meta string ── */
+  const metaParts: string[] = [];
+  if (assessment.mesocycle) metaParts.push(assessment.mesocycle);
+  if (assessment.due_date) metaParts.push(assessment.due_date);
+  if (assessment.professional?.name) metaParts.push(assessment.professional.name);
+  const meta = metaParts.join(' · ') || 'Equipe Science Club';
+
+  /* ── Icon ── */
+  const StatusIcon = isDone ? CheckCircle : isScheduled ? Clock : null;
 
   return (
     <Pressable
       accessibilityRole="button"
-      className="overflow-hidden rounded-[24px] border border-border-subtle bg-bg-surface"
       onPress={onPress}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 14,
+        backgroundColor: '#111111',
+        borderWidth: 1,
+        borderColor: '#222222',
+        borderRadius: 16,
+        padding: 14,
+      }}
     >
-      <View className="p-5">
-        <View className="mb-4 flex-row items-start gap-4">
-          <View className="flex-1">
-            <View className="mb-3 flex-row flex-wrap gap-2">
-              <View className={cn('rounded-full border px-3 py-1', tone.bg, tone.border)}>
-                <AppText className={cn('text-[11px] font-bold uppercase tracking-wide', tone.text)}>
-                  {getStatusLabel(assessment.status)}
-                </AppText>
-              </View>
-              {assessment.category && (
-                <View className="rounded-full border border-border-subtle bg-bg-base px-3 py-1">
-                  <AppText className="text-[11px] font-bold text-text-muted">{assessment.category}</AppText>
-                </View>
-              )}
-            </View>
-            <AppText className="text-lg font-bold leading-tight text-text-main">{assessment.title}</AppText>
-          </View>
-          <CaretRight color="#A1A1AA" size={18} weight="bold" style={{ marginTop: 4 }} />
-        </View>
+      {/* ── Icon halo ── */}
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 12,
+          backgroundColor: `${tone.color}12`,
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        {StatusIcon ? (
+          <StatusIcon size={22} color={tone.color} weight="fill" />
+        ) : (
+          <>
+            {/* Status dot */}
+            <View
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: 99,
+                backgroundColor: tone.color,
+              }}
+            />
+          </>
+        )}
+      </View>
 
-        <View className="mb-4 gap-2.5">
-          <View className="flex-row items-center gap-3">
-            <CalendarCheck color="#A78BFA" size={15} weight="duotone" />
-            <AppText className="flex-1 text-sm text-text-muted">Prazo: 10 dias</AppText>
-          </View>
-          <View className="flex-row items-center gap-3">
-            <UserCircle color="#A78BFA" size={15} weight="duotone" />
-            <AppText className="flex-1 text-sm text-text-muted">
-              {assessment.professional?.name || 'Equipe Science Club'}
-            </AppText>
-          </View>
-          {assessment.mesocycle && (
-            <View className="flex-row items-center gap-3">
-              <ClipboardText color="#A78BFA" size={15} weight="duotone" />
-              <AppText className="flex-1 text-sm text-text-muted">{assessment.mesocycle}</AppText>
-            </View>
-          )}
-        </View>
+      {/* ── Content ── */}
+      <View style={{ flex: 1 }}>
+        {/* Title */}
+        <AppText
+          className="font-heading"
+          style={{
+            fontSize: 15,
+            fontWeight: '600',
+            letterSpacing: -0.3,
+            color: '#FFFFFF',
+            lineHeight: 20,
+            marginBottom: 3,
+          }}
+          numberOfLines={1}
+        >
+          {assessment.title}
+        </AppText>
 
-        <View>
-          <View className="mb-2 flex-row items-center justify-between">
-            <AppText className="text-[11px] font-bold uppercase tracking-[0.15em] text-text-muted">Progresso</AppText>
-            <AppText className="text-xs font-bold text-brand-secondary">{progress}%</AppText>
+        {/* Meta row: status label · meta info */}
+        <AppText
+          style={{ fontSize: 11, color: '#666666', lineHeight: 16 }}
+          numberOfLines={1}
+        >
+          {getStatusLabel(assessment.status)} · {meta}
+        </AppText>
+
+        {/* Action / progress */}
+        {!isDone && !isScheduled && !isSubmitted && progress > 0 && (
+          <View style={{ marginTop: 8, height: 2, borderRadius: 99, backgroundColor: '#1A1A1A' }}>
+            <View
+              style={{
+                height: 2,
+                borderRadius: 99,
+                backgroundColor: tone.color,
+                width: `${progress}%`,
+                opacity: 0.65,
+              }}
+            />
           </View>
-          <View className="h-1.5 overflow-hidden rounded-full bg-bg-base">
-            <View className="h-full rounded-full bg-brand-primary" style={{ width: `${progress}%` }} />
-          </View>
-        </View>
+        )}
+      </View>
+
+      {/* ── Trailing ── */}
+      <View style={{ alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+        <AppText
+          style={{
+            fontSize: 11,
+            fontWeight: '700',
+            color: tone.color,
+          }}
+        >
+          {actionLabel}
+        </AppText>
+        <CaretRight size={12} color="#444444" weight="bold" />
       </View>
     </Pressable>
   );

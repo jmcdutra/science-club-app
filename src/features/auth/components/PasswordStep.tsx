@@ -71,13 +71,13 @@ export function PasswordStep({ cpf, isLoading, onForgotPassword, onSubmit }: Pas
       </View>
 
       <View className="pb-10">
-        <AppButton 
-          loading={isLoading} 
+        <AppButton
+          fullWidth
+          loading={isLoading}
           onPress={handleSubmit(onSubmit)}
-          className="bg-brand-primary h-16 rounded-2xl"
-          rightIcon={<Fingerprint size={24} color="#FFFFFF" />}
+          rightIcon={<Fingerprint size={18} color="#FFFFFF" />}
         >
-          <AppText className="text-white font-bold text-lg">Entrar no Club</AppText>
+          <AppText style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 15 }}>Entrar no Club</AppText>
         </AppButton>
       </View>
     </View>

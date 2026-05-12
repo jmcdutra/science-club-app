@@ -3,14 +3,18 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 import { AppScreen } from '@/src/shared/components/ui/AppScreen';
 import { AppText } from '@/src/shared/components/ui/AppText';
 import { useAppTheme } from '@/src/shared/theme/appTheme';
 import { cn } from '@/src/shared/utils/cn';
+import { useAuthStore } from '@/src/features/auth/services/auth.store';
 
 import { MacroProgress } from '../components/MacroProgress';
 import { useDietStore } from '../services/diet.store';
+import { getCurrentDiet } from '../api/diet';
 import {
   formatShortDate,
   getAdherence,
@@ -23,9 +27,19 @@ import {
 
 export function DietHistoryScreen() {
   const { isDark } = useAppTheme();
+  const { session } = useAuthStore();
   const plan = useDietStore((state) => state.plan);
+  const setRemoteData = useDietStore((state) => state.setRemoteData);
   const activeDate = useDietStore((state) => state.selectedDate);
   const dayLogs = useDietStore((state) => state.dayLogs);
+  const { data } = useQuery({
+    queryKey: ['student-diet-current'],
+    queryFn: () => getCurrentDiet(session?.token!),
+    enabled: !!session?.token,
+  });
+  useEffect(() => {
+    if (data?.diet && data?.dayLog) setRemoteData(data.diet, data.dayLog);
+  }, [data?.diet, data?.dayLog, setRemoteData]);
   const availableDates = Object.keys(dayLogs).sort();
   const [selectedDate, setSelectedDate] = useState(activeDate);
   const selectedLog = dayLogs[selectedDate] ?? dayLogs[availableDates[availableDates.length - 1]];

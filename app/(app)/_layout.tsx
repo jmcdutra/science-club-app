@@ -19,8 +19,6 @@ export default function AppLayout() {
       <Stack.Screen name="diet/log" />
       <Stack.Screen name="diet/history" />
       <Stack.Screen name="diet/meals/[mealId]" />
-      <Stack.Screen name="history/workouts/[historyId]" />
-      <Stack.Screen name="history/meals/[date]" />
       <Stack.Screen name="assessments/[assessmentId]" />
       <Stack.Screen name="assessments/[assessmentId]/questionnaire" />
       <Stack.Screen name="assessments/[assessmentId]/photos" />

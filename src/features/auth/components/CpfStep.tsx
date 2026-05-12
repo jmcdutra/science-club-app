@@ -66,11 +66,11 @@ export function CpfStep({ isLoading, onSubmit }: CpfStepProps) {
 
       <View className="pb-10">
         <AppButton
+          fullWidth
           loading={isLoading}
           onPress={handleSubmit(onSubmit)}
-          className="bg-brand-primary h-16 rounded-2xl"
         >
-          <AppText className="text-white font-bold text-lg">Continuar</AppText>
+          <AppText style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 15 }}>Continuar</AppText>
         </AppButton>
       </View>
     </View>

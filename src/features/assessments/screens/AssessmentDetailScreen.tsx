@@ -1,21 +1,29 @@
-import { ArrowLeft, Camera, ClipboardText, FileText, Flask, PaperPlaneTilt, SealCheck } from 'phosphor-react-native';
+import {
+  ArrowLeft,
+  Camera,
+  ClipboardText,
+  FileText,
+  Flask,
+  PaperPlaneTilt,
+  SealCheck,
+  CheckCircle,
+  WarningCircle,
+  CaretRight,
+} from 'phosphor-react-native';
 import { router, type Href, useLocalSearchParams } from 'expo-router';
-import { Pressable, View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 import { AppScreen } from '@/src/shared/components/ui/AppScreen';
+import { AppButton } from '@/src/shared/components/ui/AppButton';
 import { AppText } from '@/src/shared/components/ui/AppText';
-import { cn } from '@/src/shared/utils/cn';
-import { useAppTheme } from '@/src/shared/theme/appTheme';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
 
-import { AssessmentTaskCard } from '../components/AssessmentTaskCard';
 import { createAssessmentDraft, useAssessmentsStore } from '../services/assessments.store';
 import { getEvaluationById } from '../api/assessments';
 import {
-  canSubmitAssessment,
   getExamProgress,
   getPhotoProgress,
   getQuestionnaireProgress,
@@ -25,8 +33,81 @@ import {
   cleanText,
 } from '../utils';
 
+/* ─── Task Row ───────────────────────────────────────────────────────────── */
+
+type TaskRowProps = {
+  icon: typeof ClipboardText;
+  title: string;
+  detail: string;
+  done: boolean;
+  urgent?: boolean;
+  neutral?: boolean;
+  disabled?: boolean;
+  onPress?: () => void;
+};
+
+function TaskRow({ icon: Icon, title, detail, done, urgent, neutral, disabled, onPress }: TaskRowProps) {
+  const iconColor = done ? '#34D399' : urgent ? '#FCD34D' : neutral ? '#555555' : '#A78BFA';
+  const iconBg = done
+    ? 'rgba(52,211,153,0.10)'
+    : urgent
+      ? 'rgba(252,211,77,0.10)'
+      : neutral
+        ? 'rgba(255,255,255,0.04)'
+        : 'rgba(139,92,246,0.10)';
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled}
+      onPress={onPress}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        backgroundColor: '#111111',
+        borderWidth: 1,
+        borderColor: '#222222',
+        borderRadius: 16,
+        padding: 14,
+        opacity: disabled && !done ? 0.55 : 1,
+      }}
+    >
+      <View
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 12,
+          backgroundColor: iconBg,
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        <Icon size={20} color={iconColor} weight="duotone" />
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <AppText style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF', marginBottom: 2 }}>
+          {title}
+        </AppText>
+        <AppText style={{ fontSize: 11, color: '#666666' }}>{detail}</AppText>
+      </View>
+
+      {done ? (
+        <CheckCircle size={16} color="#34D399" weight="fill" />
+      ) : urgent ? (
+        <WarningCircle size={16} color="#FCD34D" weight="fill" />
+      ) : !disabled ? (
+        <CaretRight size={14} color="#444444" weight="bold" />
+      ) : null}
+    </Pressable>
+  );
+}
+
+/* ─── Screen ─────────────────────────────────────────────────────────────── */
+
 export function AssessmentDetailScreen() {
-  const { isDark } = useAppTheme();
   const { assessmentId } = useLocalSearchParams<{ assessmentId: string }>();
   const { session } = useAuthStore();
   const { data: assessment, isLoading, error } = useQuery({
@@ -54,27 +135,25 @@ export function AssessmentDetailScreen() {
 
   if (error || !assessment) {
     return (
-      <AppScreen contentClassName="px-5 pt-5">
-        <View className="mb-10 flex-row items-center">
-          <Pressable
-            accessibilityRole="button"
-            className="h-11 w-11 items-center justify-center rounded-full bg-bg-surface border border-border-subtle"
-            onPress={() => router.back()}
-          >
-            <ArrowLeft color={isDark ? '#FFFFFF' : '#111827'} size={20} weight="bold" />
-          </Pressable>
-        </View>
-        <View className="items-center justify-center flex-1 px-5">
-          <AppText className="text-center text-base text-text-muted">
+      <AppScreen contentClassName="px-6 pt-5">
+        <Pressable
+          accessibilityRole="button"
+          style={{
+            width: 44, height: 44, borderRadius: 99,
+            backgroundColor: '#111111', borderWidth: 1, borderColor: '#222222',
+            alignItems: 'center', justifyContent: 'center', marginBottom: 40,
+          }}
+          onPress={() => router.back()}
+        >
+          <ArrowLeft color="#FFFFFF" size={20} weight="bold" />
+        </Pressable>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <AppText style={{ textAlign: 'center', fontSize: 14, color: '#666666', marginBottom: 20 }}>
             Não foi possível carregar a avaliação.
           </AppText>
-          <Pressable
-            accessibilityRole="button"
-            className="mt-5 min-h-[48px] px-6 items-center justify-center rounded-2xl bg-bg-surface border border-border-subtle"
-            onPress={() => router.back()}
-          >
-            <AppText className="text-sm font-bold text-text-main">Voltar</AppText>
-          </Pressable>
+          <AppButton variant="secondary" onPress={() => router.back()}>
+            <AppText style={{ color: '#EDEDED', fontWeight: '600', fontSize: 14 }}>Voltar</AppText>
+          </AppButton>
         </View>
       </AppScreen>
     );
@@ -94,171 +173,270 @@ export function AssessmentDetailScreen() {
     draft.submitted;
   const readOnly = isScheduled || isSubmitted;
 
+  const assessmentTitle = assessment.title.includes('Acompanhamento')
+    ? assessment.questionnaire.title
+    : assessment.title;
+
+  const description = cleanText(assessment.questionnaire.description || assessment.category);
+
+  const meta = [
+    assessment.professional?.name || 'Equipe Science Club',
+    assessment.due_date && `Prazo: ${assessment.due_date}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   return (
-    <AppScreen contentClassName="px-5 pb-12 pt-5">
-      {/* Header */}
-      <View className="mb-10 flex-row items-center justify-between">
+    <AppScreen contentClassName="px-6 pb-12 pt-5">
+      {/* ── Back bar ── */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 28,
+        }}
+      >
         <Pressable
           accessibilityRole="button"
-          className="h-11 w-11 items-center justify-center rounded-full bg-bg-surface border border-border-subtle"
+          style={{
+            width: 44, height: 44, borderRadius: 99,
+            backgroundColor: '#111111', borderWidth: 1, borderColor: '#222222',
+            alignItems: 'center', justifyContent: 'center',
+          }}
           onPress={() => router.back()}
         >
-          <ArrowLeft color={isDark ? '#FFFFFF' : '#111827'} size={20} weight="bold" />
+          <ArrowLeft color="#FFFFFF" size={20} weight="bold" />
         </Pressable>
-        <AppText className="text-xs font-bold uppercase tracking-[0.2em] text-text-muted">
-          v{assessment.plan ?? '1'}
+        <AppText
+          style={{
+            fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
+            letterSpacing: 3, color: '#555555',
+          }}
+        >
+          Avaliação
         </AppText>
-        <View className="h-11 w-11" />
+        <View style={{ width: 44 }} />
       </View>
 
-      <Animated.View entering={FadeInDown.duration(420)}>
-        {/* Hero card */}
-        <View className="mb-6 overflow-hidden rounded-[28px] border border-border-subtle bg-bg-surface p-5">
-          <View className="absolute -right-16 -top-16 h-44 w-44 rounded-full bg-brand-primary/10" />
-          <View className={cn('mb-4 self-start rounded-full border px-3 py-1', statusTone.bg, statusTone.border)}>
-            <AppText className={cn('text-[11px] font-bold uppercase tracking-wide', statusTone.text)}>
-              {getStatusLabel(assessment.status)}
-            </AppText>
-          </View>
-          <AppText className="text-2xl font-bold leading-tight text-text-main">
-            {assessment.title.includes('Acompanhamento')
-              ? assessment.questionnaire.title
-              : assessment.title}
+      {/* ── Editorial header — no card wrapper ── */}
+      <Animated.View entering={FadeInDown.duration(420)} style={{ marginBottom: 28 }}>
+        {/* Status chip */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            marginBottom: 14,
+          }}
+        >
+          <View
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 99,
+              backgroundColor: statusTone.color,
+            }}
+          />
+          <AppText
+            style={{
+              fontSize: 10,
+              fontWeight: '700',
+              textTransform: 'uppercase',
+              letterSpacing: 2,
+              color: statusTone.color,
+            }}
+          >
+            {getStatusLabel(assessment.status)}
           </AppText>
-          <AppText className="mt-2 text-sm leading-relaxed text-text-muted">
-            {cleanText(assessment.questionnaire.description || assessment.category)}
-            {assessment.plan ? ` · ${assessment.plan}` : ''}
-          </AppText>
-
-          <View className="mt-5 gap-2.5">
-            <InfoRow label="Responsável" value={assessment.professional?.name || 'Equipe'} />
-            {assessment.mesocycle && <InfoRow label="Mesociclo" value={assessment.mesocycle} />}
-            <InfoRow label="Prazo" value="10 dias" />
-          </View>
         </View>
+
+        {/* Title */}
+        <AppText
+          className="font-heading"
+          style={{
+            fontSize: 24,
+            fontWeight: '600',
+            letterSpacing: -0.5,
+            color: '#FFFFFF',
+            lineHeight: 30,
+            marginBottom: 8,
+          }}
+        >
+          {assessmentTitle}
+        </AppText>
+
+        {/* Description */}
+        {description ? (
+          <AppText
+            style={{ fontSize: 14, color: '#666666', lineHeight: 21, marginBottom: 14 }}
+          >
+            {description}
+          </AppText>
+        ) : null}
+
+        {/* Meta */}
+        <AppText style={{ fontSize: 12, color: '#3A3A3A' }}>{meta}</AppText>
+
+        {/* Accent line */}
+        <View
+          style={{
+            width: 28,
+            height: 2,
+            backgroundColor: statusTone.color,
+            borderRadius: 99,
+            marginTop: 18,
+            opacity: 0.6,
+          }}
+        />
       </Animated.View>
 
-      {/* Checklist */}
-      <Animated.View entering={FadeInDown.delay(80).duration(420)} className="gap-3">
-        <View className="flex-row items-center justify-between border-b border-border-subtle pb-4 mb-1">
-          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">
+      {/* ── Checklist ── */}
+      <Animated.View entering={FadeInDown.delay(80).duration(420)} style={{ marginBottom: 24 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            borderBottomWidth: 1,
+            borderBottomColor: '#1A1A1A',
+            paddingBottom: 10,
+            marginBottom: 12,
+          }}
+        >
+          <AppText
+            style={{
+              fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
+              letterSpacing: 3.5, color: '#555555',
+            }}
+          >
             Checklist
           </AppText>
         </View>
 
-        <AssessmentTaskCard
-          description={cleanText(assessment.questionnaire.description)}
-          done={isSubmitted || questionnaire.percent === 100}
-          disabled={isScheduled || isSubmitted}
-          icon={ClipboardText}
-          progressLabel={isSubmitted ? 'Respondido' : `${questionnaire.answered}/${questionnaire.total}`}
-          title="Responder questionário"
-          urgent={!isSubmitted && missing.length > 0}
-          onPress={() => router.push(`/(app)/assessments/${assessment.id}/questionnaire` as Href)}
-        />
-        {assessment.questionnaire.image_questions.length > 0 && (
-          <AssessmentTaskCard
-            description="Fotos frontais, laterais e costas com enquadramento padronizado."
-            done={isSubmitted || photos.done === photos.total}
+        <View style={{ gap: 8 }}>
+          <TaskRow
+            icon={ClipboardText}
+            title="Questionário"
+            detail={isSubmitted ? 'Respondido' : `${questionnaire.answered} de ${questionnaire.total} perguntas`}
+            done={isSubmitted || questionnaire.percent === 100}
+            urgent={!isSubmitted && missing.length > 0}
             disabled={isScheduled || isSubmitted}
-            icon={Camera}
-            progressLabel={isSubmitted ? 'Enviado' : `${photos.done}/${photos.total}`}
-            title="Fotos corporais"
-            urgent={!isSubmitted && photos.done < photos.total}
-            onPress={() => router.push(`/(app)/assessments/${assessment.id}/photos` as Href)}
+            onPress={() => router.push(`/(app)/assessments/${assessment.id}/questionnaire` as Href)}
           />
-        )}
-        {assessment.questionnaire.attachment_questions.length > 0 && (
-          <AssessmentTaskCard
-            description="Anexe os exames solicitados ou documentos relevantes."
-            done={isSubmitted || exams.done === exams.total}
-            disabled={isScheduled || isSubmitted}
-            icon={Flask}
-            progressLabel={isSubmitted ? 'Enviado' : `${exams.done}/${exams.total}`}
-            title="Exames e anexos"
-            urgent={!isSubmitted && exams.done < exams.total}
-            onPress={() => router.push(`/(app)/assessments/${assessment.id}/exams` as Href)}
+
+          {assessment.questionnaire.image_questions.length > 0 && (
+            <TaskRow
+              icon={Camera}
+              title="Fotos corporais"
+              detail={isSubmitted ? 'Enviado' : `${photos.done} de ${photos.total} posições`}
+              done={isSubmitted || photos.done === photos.total}
+              urgent={!isSubmitted && photos.done < photos.total}
+              disabled={isScheduled || isSubmitted}
+              onPress={() => router.push(`/(app)/assessments/${assessment.id}/photos` as Href)}
+            />
+          )}
+
+          {assessment.questionnaire.attachment_questions.length > 0 && (
+            <TaskRow
+              icon={Flask}
+              title="Exames e anexos"
+              detail={isSubmitted ? 'Enviado' : `${exams.done} de ${exams.total} documentos`}
+              done={isSubmitted || exams.done === exams.total}
+              urgent={!isSubmitted && exams.done < exams.total}
+              disabled={isScheduled || isSubmitted}
+              onPress={() => router.push(`/(app)/assessments/${assessment.id}/exams` as Href)}
+            />
+          )}
+
+          <TaskRow
+            icon={SealCheck}
+            title="Parecer final"
+            detail={
+              assessment.result?.deliveredAt
+                ? `Entregue em ${assessment.result.deliveredAt}`
+                : isSubmitted
+                  ? 'Em análise pela equipe'
+                  : 'Aguardando envio'
+            }
+            done={!!assessment.result?.deliveredAt}
+            urgent={!assessment.result?.deliveredAt && isSubmitted}
+            neutral={!assessment.result?.deliveredAt && !isSubmitted}
+            disabled={!assessment.result?.deliveredAt}
+            onPress={() =>
+              assessment.result?.deliveredAt &&
+              router.push(`/(app)/assessments/${assessment.id}/result` as Href)
+            }
           />
-        )}
-        <AssessmentTaskCard
-          description={
-            assessment.result?.deliveredAt
-              ? 'Parecer entregue pela equipe com ajustes e próximos passos.'
-              : isSubmitted
-                ? 'Aguardando análise da equipe para liberar o parecer.'
-                : 'Aguardando o envio do questionário para análise.'
-          }
-          done={!!assessment.result?.deliveredAt}
-          urgent={!assessment.result?.deliveredAt && isSubmitted}
-          neutral={!assessment.result?.deliveredAt && !isSubmitted}
-          icon={SealCheck}
-          progressLabel={
-            assessment.result?.deliveredAt
-              ? `Respondido em ${assessment.result.deliveredAt}`
-              : isSubmitted
-                ? 'Em análise'
-                : 'Aguardando envio'
-          }
-          title="Parecer final"
-          disabled={!assessment.result?.deliveredAt}
-          onPress={() =>
-            assessment.result?.deliveredAt &&
-            router.push(`/(app)/assessments/${assessment.id}/result` as Href)
-          }
-        />
+        </View>
       </Animated.View>
 
-      {/* CTA */}
-      <Animated.View entering={FadeInDown.delay(140).duration(420)} className="mt-7">
+      {/* ── CTA ── */}
+      <Animated.View entering={FadeInDown.delay(140).duration(420)}>
         {assessment.status === 'answered' || assessment.status === 'done' ? (
-          <Pressable
-            accessibilityRole="button"
-            className="min-h-[56px] flex-row items-center justify-center gap-2 rounded-2xl bg-brand-primary"
+          <AppButton
+            variant="primary"
+            fullWidth
             onPress={() => router.push(`/(app)/assessments/${assessment.id}/result` as Href)}
+            rightIcon={<FileText color="#fff" size={18} weight="bold" />}
           >
-            <AppText className="text-base font-bold text-white">Ver parecer final</AppText>
-            <FileText color="#FFFFFF" size={18} weight="bold" />
-          </Pressable>
-        ) : isScheduled ? (
-          <View className="rounded-[24px] border border-amber-400/20 bg-amber-400/8 p-5">
-            <AppText className="text-base font-bold text-text-main">Ainda não liberada</AppText>
-            <AppText className="mt-2 text-sm leading-relaxed text-text-muted">
-              Esta avaliação está agendada. Quando chegar a data, o questionário e as fotos ficam disponíveis.
+            <AppText style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>
+              Ver parecer final
             </AppText>
-            <AppText className="mt-4 text-sm font-bold text-amber-400">
+          </AppButton>
+        ) : isScheduled ? (
+          <View
+            style={{
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: 'rgba(251,191,36,0.15)',
+              backgroundColor: 'rgba(251,191,36,0.06)',
+              padding: 16,
+            }}
+          >
+            <AppText style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF', marginBottom: 4 }}>
+              Ainda não liberada
+            </AppText>
+            <AppText style={{ fontSize: 12, color: '#666666', lineHeight: 17, marginBottom: 10 }}>
+              Esta avaliação está agendada. Quando chegar a data, o questionário e as fotos ficam
+              disponíveis.
+            </AppText>
+            <AppText style={{ fontSize: 12, fontWeight: '700', color: '#FBBF24' }}>
               Libera: {assessment.due_date}
             </AppText>
           </View>
         ) : readOnly ? (
-          <View className="rounded-[24px] border border-brand-primary/25 bg-brand-primary/8 p-5">
-            <AppText className="text-base font-bold text-text-main">Equipe analisando</AppText>
-            <AppText className="mt-2 text-sm leading-relaxed text-text-muted">
-              Seu envio foi recebido. A equipe revisa questionário, fotos e anexos antes de liberar o parecer.
+          <View
+            style={{
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: 'rgba(139,92,246,0.15)',
+              backgroundColor: 'rgba(139,92,246,0.06)',
+              padding: 16,
+            }}
+          >
+            <AppText style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF', marginBottom: 4 }}>
+              Equipe analisando
             </AppText>
-            <AppText className="mt-4 text-sm font-bold text-brand-secondary">
+            <AppText style={{ fontSize: 12, color: '#666666', lineHeight: 17, marginBottom: 10 }}>
+              Seu envio foi recebido. A equipe revisa tudo antes de liberar o parecer.
+            </AppText>
+            <AppText style={{ fontSize: 12, fontWeight: '700', color: '#A78BFA' }}>
               Previsão: até 24h úteis
             </AppText>
           </View>
         ) : (
-          <Pressable
-            accessibilityRole="button"
-            className="min-h-[56px] flex-row items-center justify-center gap-2 rounded-2xl bg-brand-primary"
+          <AppButton
+            variant="primary"
+            fullWidth
             onPress={() => router.push(`/(app)/assessments/${assessment.id}/review` as Href)}
+            rightIcon={<PaperPlaneTilt color="#fff" size={18} weight="bold" />}
           >
-            <AppText className="text-base font-bold text-white">Revisar e enviar</AppText>
-            <PaperPlaneTilt color="#FFFFFF" size={18} weight="bold" />
-          </Pressable>
+            <AppText style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>
+              Revisar e enviar
+            </AppText>
+          </AppButton>
         )}
       </Animated.View>
     </AppScreen>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View className="flex-row items-center justify-between gap-4 border-t border-border-subtle pt-3">
-      <AppText className="text-sm text-text-muted">{label}</AppText>
-      <AppText className="max-w-[64%] text-right text-sm font-bold text-text-main">{value}</AppText>
-    </View>
   );
 }

@@ -1,34 +1,245 @@
-import { SealCheck, WarningCircle, Clock, CaretRight } from 'phosphor-react-native';
 import { router, type Href } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, View, ActivityIndicator } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import { ActivityIndicator, ScrollView, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Circle, Defs, LinearGradient, Polyline, Stop } from 'react-native-svg';
 
-import { AppShell } from '@/src/shared/components/layout/AppShell';
-import { AppScreen } from '@/src/shared/components/ui/AppScreen';
 import { AppText } from '@/src/shared/components/ui/AppText';
-import { useAppTheme } from '@/src/shared/theme/appTheme';
+import { NotificationsModal } from '@/src/shared/components/ui/NotificationsModal';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
+import { PageHeader } from '@/src/shared/components/layout/PageHeader';
 
 import { AssessmentCard } from '../components/AssessmentCard';
 import { createAssessmentDraft, useAssessmentsStore } from '../services/assessments.store';
-import { AssessmentFilter } from '../types';
-import { getAssessmentProgress, getStatusLabel, getStatusTone } from '../utils';
 import { getStudentEvaluations } from '../api/assessments';
+import { Assessment, AssessmentStatus } from '../types';
 
-const filters: { label: string; value: AssessmentFilter }[] = [
-  { label: 'Pendentes', value: 'pending' },
-  { label: 'Em análise', value: 'analysis' },
-  { label: 'Concluídas', value: 'done' },
-  { label: 'Todas', value: 'all' },
-];
+/* ─── Status sort order ──────────────────────────────────────────────────── */
+
+const STATUS_SORT: Record<AssessmentStatus, number> = {
+  overdue: 0,
+  pending: 1,
+  sent: 2,
+  received: 3,
+  analysis: 4,
+  answered: 5,
+  scheduled: 6,
+  done: 7,
+};
+
+/* ─── Evolution Card ─────────────────────────────────────────────────────── */
+
+type EvolutionData = {
+  peso?: number;
+  pesoDelta?: number;
+  deltaDate?: string;
+  imc?: number;
+  imcDelta?: number;
+  gordura?: number;
+  gorduraDelta?: number;
+  massa?: number;
+  massaDelta?: number;
+};
+
+type DeltaInfo = { text: string; good: boolean } | null;
+
+function makeDelta(v: number | undefined, suffix: string, lowerIsBetter: boolean): DeltaInfo {
+  if (v == null) return null;
+  const good = lowerIsBetter ? v < 0 : v > 0;
+  return { text: `${v > 0 ? '+' : ''}${v.toFixed(1)}${suffix}`, good };
+}
+
+function EvolutionCard({ data }: { data: EvolutionData }) {
+  const fmt = (v?: number) => (v != null ? v.toFixed(1) : '—');
+
+  const pesoDeltaInfo: DeltaInfo =
+    data.pesoDelta != null
+      ? { text: `−${Math.abs(data.pesoDelta).toFixed(1)}kg`, good: data.pesoDelta < 0 }
+      : null;
+
+  return (
+    <View
+      style={{
+        backgroundColor: '#111111',
+        borderWidth: 1,
+        borderColor: '#222222',
+        borderRadius: 24,
+        padding: 18,
+        marginBottom: 24,
+        overflow: 'hidden',
+      }}
+    >
+      {/* Purple glow blob */}
+      <View
+        style={{
+          position: 'absolute',
+          top: -50,
+          right: -50,
+          width: 160,
+          height: 160,
+          borderRadius: 80,
+          backgroundColor: 'rgba(139,92,246,0.08)',
+        }}
+      />
+
+      <View style={{ position: 'relative' }}>
+        {/* Eyebrow */}
+        <AppText
+          style={{
+            fontSize: 10,
+            fontWeight: '700',
+            textTransform: 'uppercase',
+            letterSpacing: 3.5,
+            color: '#555555',
+            marginBottom: 8,
+          }}
+        >
+          Evolução atual
+        </AppText>
+
+        {/* Main metric: peso */}
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+            <AppText
+              style={{
+                fontSize: 36,
+                fontWeight: '700',
+                letterSpacing: -1,
+                lineHeight: 40,
+                color: '#FFFFFF',
+              }}
+            >
+              {fmt(data.peso)}
+            </AppText>
+            {data.peso != null && (
+              <AppText style={{ fontSize: 14, fontWeight: '500', color: '#8B5CF6' }}>
+                kg
+              </AppText>
+            )}
+          </View>
+
+          {pesoDeltaInfo && (
+            <View
+              style={{
+                backgroundColor: pesoDeltaInfo.good
+                  ? 'rgba(34,197,94,0.12)'
+                  : 'rgba(251,113,133,0.12)',
+                borderRadius: 99,
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+              }}
+            >
+              <AppText
+                style={{
+                  fontSize: 12,
+                  fontWeight: '700',
+                  color: pesoDeltaInfo.good ? '#22C55E' : '#FB7185',
+                }}
+              >
+                {pesoDeltaInfo.text}
+              </AppText>
+            </View>
+          )}
+        </View>
+
+        <AppText style={{ fontSize: 11, color: '#555555', marginBottom: 14 }}>
+          {data.deltaDate
+            ? `vs. última avaliação · ${data.deltaDate}`
+            : 'vs. última avaliação'}
+        </AppText>
+
+        {/* Sparkline */}
+        <Svg width="100%" height={42} viewBox="0 0 280 42">
+          <Defs>
+            <LinearGradient id="spkGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <Stop offset="0%" stopColor="#8B5CF6" stopOpacity="0.2" />
+              <Stop offset="100%" stopColor="#8B5CF6" stopOpacity="1" />
+            </LinearGradient>
+          </Defs>
+          <Polyline
+            fill="none"
+            stroke="url(#spkGrad)"
+            strokeWidth="2"
+            points="0,38 40,34 80,36 120,28 160,22 200,16 240,18 280,8"
+          />
+          <Circle cx={280} cy={8} r={4} fill="#8B5CF6" />
+          <Circle cx={280} cy={8} r={7} fill="rgba(139,92,246,0.2)" />
+        </Svg>
+
+        {/* Mini stats row */}
+        <View style={{ flexDirection: 'row', gap: 20, marginTop: 10 }}>
+          {(
+            [
+              {
+                lbl: 'IMC',
+                val: fmt(data.imc),
+                delta: makeDelta(
+                  data.imcDelta != null ? -Math.abs(data.imcDelta) : undefined,
+                  '',
+                  true,
+                ),
+              },
+              {
+                lbl: '% Gordura',
+                val: data.gordura != null ? `${fmt(data.gordura)}%` : '—',
+                delta: makeDelta(
+                  data.gorduraDelta != null ? -Math.abs(data.gorduraDelta) : undefined,
+                  '%',
+                  true,
+                ),
+              },
+              {
+                lbl: 'Massa Magra',
+                val: data.massa != null ? `${fmt(data.massa)}kg` : '—',
+                delta: makeDelta(data.massaDelta, '', false),
+              },
+            ] as { lbl: string; val: string; delta: DeltaInfo }[]
+          ).map((s) => (
+            <View key={s.lbl}>
+              <AppText
+                style={{
+                  fontSize: 10,
+                  fontWeight: '600',
+                  textTransform: 'uppercase',
+                  letterSpacing: 1,
+                  color: '#555555',
+                  marginBottom: 2,
+                }}
+              >
+                {s.lbl}
+              </AppText>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <AppText style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+                  {s.val}
+                </AppText>
+                {s.delta && (
+                  <AppText
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '700',
+                      color: s.delta.good ? '#22C55E' : '#FB7185',
+                    }}
+                  >
+                    {s.delta.text}
+                  </AppText>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/* ─── Screen ─────────────────────────────────────────────────────────────── */
 
 export function AssessmentsDashboardScreen() {
-  const { isDark } = useAppTheme();
-  const [filter, setFilter] = useState<AssessmentFilter>('pending');
   const { session } = useAuthStore();
   const drafts = useAssessmentsStore((state) => state.drafts);
+  const [notifVisible, setNotifVisible] = useState(false);
 
   const { data: assessments = [], isLoading } = useQuery({
     queryKey: ['assessments'],
@@ -36,192 +247,79 @@ export function AssessmentsDashboardScreen() {
     enabled: !!session?.token,
   });
 
-  const urgentAssessment = useMemo(
-    () =>
-      assessments.find((a) => a.status === 'overdue') ??
-      assessments.find((a) => a.status === 'pending') ??
-      assessments.find((a) => a.status === 'scheduled') ??
-      assessments[0],
+  const sortedAssessments = useMemo(
+    () => [...assessments].sort((a, b) => STATUS_SORT[a.status] - STATUS_SORT[b.status]),
     [assessments],
   );
 
-  const filteredAssessments = useMemo(
-    () =>
-      assessments.filter((a) => {
-        if (filter === 'all') return true;
-        if (filter === 'done') return a.status === 'done';
-        if (filter === 'analysis') return ['received', 'analysis', 'answered'].includes(a.status);
-        return ['pending', 'sent', 'scheduled', 'overdue'].includes(a.status);
-      }),
-    [assessments, filter],
-  );
-
-  const pendingCount = assessments.filter((a) => ['pending', 'sent', 'scheduled', 'overdue'].includes(a.status)).length;
-  const analysisCount = assessments.filter((a) => ['received', 'analysis', 'answered'].includes(a.status)).length;
-  const doneCount = assessments.filter((a) => a.status === 'done').length;
-
-  const urgentDraft = urgentAssessment
-    ? (drafts[urgentAssessment.id] ?? createAssessmentDraft(urgentAssessment as any))
-    : null;
-  const urgentTone = urgentAssessment ? getStatusTone(urgentAssessment.status) : null;
-
   if (isLoading) {
     return (
-      <AppScreen contentClassName="items-center justify-center">
+      <View
+        style={{ flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' }}
+      >
         <ActivityIndicator size="large" color="#A78BFA" />
-      </AppScreen>
+      </View>
     );
   }
 
   return (
-    <AppShell title="Avaliações" contentClassName="pb-36">
+    <View style={{ flex: 1, backgroundColor: '#000000' }}>
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <PageHeader
+          title="Avaliações"
+          subtitle="Acompanhe sua evolução"
+          onNotificationPress={() => setNotifVisible(true)}
+        />
 
-      {/* ─── AVALIAÇÃO URGENTE ─────────────────── */}
-      {urgentAssessment && urgentTone && urgentDraft && (
-        <Animated.View entering={FadeInDown.delay(100).duration(600)} className="mb-8">
-          <Pressable
-            accessibilityRole="button"
-            style={{
-              borderRadius: 24,
-              overflow: 'hidden',
-              borderWidth: 1,
-              borderColor: urgentTone.color + '30',
-            }}
-            onPress={() => router.push(`/(app)/assessments/${urgentAssessment.id}` as Href)}
-          >
-            {/* Tinted header */}
-            <View style={{ backgroundColor: urgentTone.color + '0C', padding: 20, paddingBottom: 18 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <View style={{
-                  borderRadius: 99,
-                  borderWidth: 1,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                  borderColor: urgentTone.color + '40',
-                  backgroundColor: urgentTone.color + '18',
-                }}>
-                  <AppText className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: urgentTone.color }}>
-                    {getStatusLabel(urgentAssessment.status)}
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 148, paddingTop: 8 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ── Evolution hero card ── */}
+          <Animated.View entering={FadeInDown.delay(80).duration(500)}>
+            <EvolutionCard data={{}} />
+          </Animated.View>
+
+          {/* ── Section label ── */}
+          <Animated.View entering={FadeInDown.delay(160).duration(500)}>
+            <AppText
+              style={{
+                fontSize: 11,
+                fontWeight: '700',
+                textTransform: 'uppercase',
+                letterSpacing: 3.5,
+                color: '#555555',
+                marginBottom: 12,
+              }}
+            >
+              Avaliações
+            </AppText>
+          </Animated.View>
+
+          {/* ── All assessments ── */}
+          <Animated.View entering={FadeInDown.delay(220).duration(500)}>
+            <View style={{ gap: 8 }}>
+              {sortedAssessments.map((assessment) => (
+                <AssessmentCard
+                  key={assessment.id}
+                  assessment={assessment as any}
+                  draft={drafts[assessment.id] ?? createAssessmentDraft(assessment as any)}
+                  onPress={() => router.push(`/(app)/assessments/${assessment.id}` as Href)}
+                />
+              ))}
+              {sortedAssessments.length === 0 && (
+                <View style={{ paddingVertical: 48, alignItems: 'center' }}>
+                  <AppText style={{ fontSize: 14, color: '#444444', textAlign: 'center' }}>
+                    Nenhuma avaliação encontrada.
                   </AppText>
                 </View>
-                <AppText className="text-xs font-bold text-text-muted">
-                  {getAssessmentProgress(urgentAssessment as any, urgentDraft)}% enviado
-                </AppText>
-              </View>
-
-              <AppText className="text-2xl font-bold leading-tight text-text-main mb-2">
-                {urgentAssessment.title}
-              </AppText>
-              <AppText className="text-sm text-text-muted leading-relaxed">
-                {urgentAssessment.status === 'answered' || urgentAssessment.status === 'done'
-                  ? 'Parecer entregue. Veja os ajustes e próximos passos.'
-                  : 'Sua equipe precisa dessas informações para ajustar treino, dieta e estratégia.'}
-              </AppText>
+              )}
             </View>
+          </Animated.View>
+        </ScrollView>
+      </SafeAreaView>
 
-            {/* Bottom action bar */}
-            <View style={{
-              backgroundColor: isDark ? '#111111' : '#F5F5F5',
-              paddingHorizontal: 20,
-              paddingVertical: 14,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}>
-              <AppText className="text-sm font-bold text-text-muted">
-                {urgentAssessment.status === 'done' || urgentAssessment.status === 'answered'
-                  ? 'Ver parecer'
-                  : 'Continuar avaliação'}
-              </AppText>
-              <CaretRight color="#555" size={14} weight="bold" />
-            </View>
-          </Pressable>
-        </Animated.View>
-      )}
-
-      {/* ─── RESUMO ────────────────────────────── */}
-      <Animated.View entering={FadeInDown.delay(200).duration(600)} className="mb-8">
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <SummaryCard icon={WarningCircle} label="pendentes" value={String(pendingCount)} tone="warning" />
-          <SummaryCard icon={Clock} label="em análise" value={String(analysisCount)} />
-          <SummaryCard icon={SealCheck} label="concluídas" value={String(doneCount)} tone="success" />
-        </View>
-      </Animated.View>
-
-      {/* ─── FILTROS ───────────────────────────── */}
-      <Animated.View entering={FadeInDown.delay(300).duration(600)} className="mb-8">
-        <View className="flex-row items-center justify-between border-b border-border-subtle pb-4 mb-4">
-          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">
-            Histórico
-          </AppText>
-          <AppText className="text-xs text-text-muted">{filteredAssessments.length} itens</AppText>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-          {filters.map((item) => (
-            <Pressable
-              key={item.value}
-              accessibilityRole="button"
-              style={{
-                flex: 1,
-                minHeight: 38,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: filter === item.value ? '#8B5CF6' : 'transparent',
-                backgroundColor: filter === item.value ? '#8B5CF618' : (isDark ? '#1A1A1A' : '#F0F0F0'),
-              }}
-              onPress={() => setFilter(item.value)}
-            >
-              <AppText
-                className="text-[11px] font-bold"
-                style={{ color: filter === item.value ? '#A78BFA' : '#666' }}
-              >
-                {item.label}
-              </AppText>
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={{ gap: 10 }}>
-          {filteredAssessments.map((assessment) => (
-            <AssessmentCard
-              key={assessment.id}
-              assessment={assessment as any}
-              draft={drafts[assessment.id] ?? createAssessmentDraft(assessment as any)}
-              onPress={() => router.push(`/(app)/assessments/${assessment.id}` as Href)}
-            />
-          ))}
-          {filteredAssessments.length === 0 && (
-            <AppText className="py-10 text-center text-sm text-text-muted">
-              Nenhuma avaliação encontrada.
-            </AppText>
-          )}
-        </View>
-      </Animated.View>
-    </AppShell>
-  );
-}
-
-function SummaryCard({
-  icon: Icon,
-  label,
-  value,
-  tone = 'brand',
-}: {
-  icon: typeof WarningCircle;
-  label: string;
-  value: string;
-  tone?: 'brand' | 'success' | 'warning';
-}) {
-  const color = tone === 'success' ? '#34D399' : tone === 'warning' ? '#FCD34D' : '#A78BFA';
-
-  return (
-    <View className="flex-1 rounded-[20px] border border-border-subtle bg-bg-surface p-4">
-      <Icon color={color} size={20} weight="duotone" />
-      <AppText className="mt-3 text-xl font-bold text-text-main">{value}</AppText>
-      <AppText className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-text-muted">{label}</AppText>
+      <NotificationsModal visible={notifVisible} onClose={() => setNotifVisible(false)} />
     </View>
   );
 }

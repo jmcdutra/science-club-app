@@ -1,15 +1,14 @@
 import { ArrowLeft, CheckCircle, FileText, PaperPlaneTilt, Trash, UploadSimple } from 'phosphor-react-native';
 import { router, type Href, useLocalSearchParams } from 'expo-router';
-import { Alert, Pressable, View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 
 import { AppScreen } from '@/src/shared/components/ui/AppScreen';
+import { AppButton } from '@/src/shared/components/ui/AppButton';
 import { AppText } from '@/src/shared/components/ui/AppText';
-import { useAppTheme } from '@/src/shared/theme/appTheme';
-import { cn } from '@/src/shared/utils/cn';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
 
 import { createAssessmentDraft, useAssessmentsStore } from '../services/assessments.store';
@@ -17,7 +16,6 @@ import { getExamProgress } from '../utils';
 import { getEvaluationById } from '../api/assessments';
 
 export function AssessmentExamsScreen() {
-  const { isDark } = useAppTheme();
   const { assessmentId } = useLocalSearchParams<{ assessmentId: string }>();
   const { session } = useAuthStore();
   const drafts = useAssessmentsStore((state) => state.drafts);
@@ -56,7 +54,7 @@ export function AssessmentExamsScreen() {
     if (isSubmitted) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert('Permissão necessária', 'Autorize o acesso à galeria nas configurações do dispositivo.');
+      Alert.alert('Permissão necessária', 'Autorize o acesso à galeria nas configurações.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -70,46 +68,90 @@ export function AssessmentExamsScreen() {
   }
 
   return (
-    <AppScreen contentClassName="px-5 pb-12 pt-5">
-      {/* Header */}
-      <View className="mb-10 flex-row items-center justify-between">
+    <AppScreen contentClassName="px-6 pb-12 pt-5">
+      {/* ── Back bar ── */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 24,
+        }}
+      >
         <Pressable
           accessibilityRole="button"
-          className="h-11 w-11 items-center justify-center rounded-full bg-bg-surface border border-border-subtle"
+          style={{
+            width: 44, height: 44, borderRadius: 99,
+            backgroundColor: '#111111', borderWidth: 1, borderColor: '#222222',
+            alignItems: 'center', justifyContent: 'center',
+          }}
           onPress={() => router.back()}
         >
-          <ArrowLeft color={isDark ? '#FFFFFF' : '#111827'} size={20} weight="bold" />
+          <ArrowLeft color="#FFFFFF" size={20} weight="bold" />
         </Pressable>
-        <AppText className="text-xs font-bold uppercase tracking-[0.2em] text-text-muted">Exames</AppText>
-        <View className="h-11 w-11" />
+        <AppText
+          style={{
+            fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
+            letterSpacing: 3, color: '#555555',
+          }}
+        >
+          Exames e Anexos
+        </AppText>
+        <View style={{ width: 44 }} />
       </View>
 
-      <Animated.View entering={FadeInDown.duration(420)}>
-        <View className="mb-6 rounded-[28px] border border-border-subtle bg-bg-surface p-5">
-          <View className="mb-4 h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary/10">
-            <FileText color="#A78BFA" size={24} weight="duotone" />
-          </View>
-          <AppText className="text-2xl font-bold leading-tight text-text-main">Exames e anexos</AppText>
-          <AppText className="mt-2 text-sm leading-relaxed text-text-muted">
-            Selecione fotos dos seus exames ou documentos. Ficam salvos no rascunho até o envio.
-          </AppText>
+      {/* ── Editorial heading ── */}
+      <Animated.View entering={FadeInDown.duration(420)} style={{ marginBottom: 24 }}>
+        <AppText
+          className="font-heading"
+          style={{
+            fontSize: 22,
+            fontWeight: '600',
+            letterSpacing: -0.5,
+            color: '#FFFFFF',
+            marginBottom: 6,
+            lineHeight: 28,
+          }}
+        >
+          Exames e anexos
+        </AppText>
+        <AppText style={{ fontSize: 13, color: '#666666', lineHeight: 18, marginBottom: 20 }}>
+          Selecione fotos dos seus exames ou documentos. Ficam salvos no rascunho até o envio.
+        </AppText>
 
-          <View className="mt-5">
-            <View className="mb-2 flex-row items-center justify-between">
-              <AppText className="text-[11px] font-bold uppercase tracking-wide text-text-muted">
-                {progress.done}/{progress.total} anexos
-              </AppText>
-              <AppText className="text-[11px] font-bold text-brand-secondary">{progress.percent}%</AppText>
-            </View>
-            <View className="h-1.5 overflow-hidden rounded-full bg-bg-base">
-              <View className="h-full rounded-full bg-brand-primary" style={{ width: `${progress.percent}%` }} />
-            </View>
+        {/* ── Progress strip ── */}
+        <View>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8,
+            }}
+          >
+            <AppText style={{ fontSize: 12, fontWeight: '600', color: '#666666' }}>
+              {progress.done} de {progress.total} anexos
+            </AppText>
+            <AppText style={{ fontSize: 11, fontWeight: '700', color: '#A78BFA' }}>
+              {progress.percent}%
+            </AppText>
+          </View>
+          <View style={{ height: 3, borderRadius: 99, backgroundColor: '#1A1A1A' }}>
+            <View
+              style={{
+                height: 3,
+                borderRadius: 99,
+                backgroundColor: '#8B5CF6',
+                width: `${progress.percent}%`,
+              }}
+            />
           </View>
         </View>
       </Animated.View>
 
+      {/* ── Exam cards ── */}
       {assessment.questionnaire.attachment_questions.length ? (
-        <View className="gap-3 mb-8">
+        <View style={{ gap: 8, marginBottom: 24 }}>
           {assessment.questionnaire.attachment_questions.map((exam: any, index: number) => {
             const examId = exam.id || exam._id;
             const attached = Boolean(draft.exams[examId]);
@@ -117,83 +159,81 @@ export function AssessmentExamsScreen() {
             return (
               <Animated.View
                 key={examId || index}
-                entering={FadeInDown.delay(80 + index * 40).duration(420)}
+                entering={FadeInDown.delay(60 + index * 40).duration(420)}
                 style={{
-                  borderRadius: 24,
+                  borderRadius: 16,
                   borderWidth: 1,
-                  borderColor: attached ? '#34D39930' : undefined,
+                  borderColor: attached ? 'rgba(52,211,153,0.20)' : '#222222',
+                  backgroundColor: '#111111',
+                  padding: 14,
                 }}
-                className={cn(attached ? 'bg-emerald-400/8' : 'bg-bg-surface border-border-subtle')}
               >
-                <View style={{ padding: 16, flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
                   <View
                     style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 14,
-                      backgroundColor: isDark ? '#1A1A1A' : '#EFEFEF',
+                      width: 40,
+                      height: 40,
+                      borderRadius: 12,
+                      backgroundColor: attached ? 'rgba(52,211,153,0.10)' : 'rgba(139,92,246,0.10)',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      flexShrink: 0,
                     }}
                   >
                     {attached ? (
-                      <CheckCircle color="#34D399" size={24} weight="fill" />
+                      <CheckCircle size={20} color="#34D399" weight="fill" />
                     ) : (
-                      <FileText color="#A78BFA" size={22} weight="duotone" />
+                      <FileText size={20} color="#A78BFA" weight="duotone" />
                     )}
                   </View>
 
                   <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                       <View
                         style={{
-                          borderRadius: 99,
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          backgroundColor: isDark ? '#222' : '#F0F0F0',
+                          borderRadius: 6,
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          backgroundColor: '#1A1A1A',
                         }}
                       >
-                        <AppText className="text-[10px] font-bold text-text-muted">
+                        <AppText style={{ fontSize: 9, fontWeight: '700', color: '#555555', textTransform: 'uppercase', letterSpacing: 1 }}>
                           {exam.required ? 'Obrigatório' : 'Opcional'}
                         </AppText>
                       </View>
                     </View>
-                    <AppText className="text-base font-bold text-text-main">{exam.label}</AppText>
+                    <AppText style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF', marginBottom: 2 }}>
+                      {exam.label}
+                    </AppText>
                     {exam.description ? (
-                      <AppText className="mt-1 text-sm leading-snug text-text-muted">{exam.description}</AppText>
+                      <AppText style={{ fontSize: 11, color: '#666666', lineHeight: 15 }}>
+                        {exam.description}
+                      </AppText>
                     ) : null}
                   </View>
                 </View>
 
-                <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={isSubmitted}
+                <AppButton
+                  variant={attached ? 'secondary' : 'primary'}
+                  fullWidth
+                  disabled={isSubmitted}
+                  onPress={() => attached ? setExam(assessment.id, examId, null) : handlePickFile(examId)}
+                  leftIcon={
+                    attached
+                      ? <Trash size={15} color="#888888" weight="bold" />
+                      : <UploadSimple size={15} color="#FFFFFF" weight="bold" />
+                  }
+                >
+                  <AppText
                     style={{
-                      minHeight: 44,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                      borderRadius: 14,
-                      backgroundColor: attached ? (isDark ? '#1A1A1A' : '#EFEFEF') : '#8B5CF6',
-                      opacity: isSubmitted ? 0.5 : 1,
+                      fontWeight: '600',
+                      fontSize: 13,
+                      color: attached ? '#888888' : '#FFFFFF',
                     }}
-                    onPress={() => attached ? setExam(assessment.id, examId, null) : handlePickFile(examId)}
                   >
-                    {attached ? (
-                      <Trash color={isDark ? '#CCC' : '#444'} size={16} weight="bold" />
-                    ) : (
-                      <UploadSimple color="#FFFFFF" size={16} weight="bold" />
-                    )}
-                    <AppText
-                      className="text-sm font-bold"
-                      style={{ color: attached ? (isDark ? '#CCC' : '#444') : '#FFFFFF' }}
-                    >
-                      {attached ? 'Remover anexo' : 'Selecionar arquivo'}
-                    </AppText>
-                  </Pressable>
-                </View>
+                    {attached ? 'Remover anexo' : 'Selecionar arquivo'}
+                  </AppText>
+                </AppButton>
               </Animated.View>
             );
           })}
@@ -201,24 +241,32 @@ export function AssessmentExamsScreen() {
       ) : (
         <Animated.View
           entering={FadeInDown.delay(80).duration(420)}
-          className="rounded-[24px] border border-border-subtle bg-bg-surface p-5 mb-8"
+          style={{
+            borderRadius: 16, borderWidth: 1, borderColor: '#222222',
+            backgroundColor: '#111111', padding: 18, marginBottom: 24,
+          }}
         >
-          <AppText className="text-base font-bold text-text-main">Sem anexos nesta etapa</AppText>
-          <AppText className="mt-2 text-sm leading-relaxed text-text-muted">
+          <AppText style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF', marginBottom: 6 }}>
+            Sem anexos nesta etapa
+          </AppText>
+          <AppText style={{ fontSize: 12, color: '#666666', lineHeight: 17 }}>
             Para esta avaliação, a equipe precisa apenas do questionário e das fotos padronizadas.
           </AppText>
         </Animated.View>
       )}
 
+      {/* ── CTA ── */}
       <Animated.View entering={FadeInDown.delay(180).duration(420)}>
-        <Pressable
-          accessibilityRole="button"
-          className="min-h-[56px] flex-row items-center justify-center gap-2 rounded-2xl bg-brand-primary"
+        <AppButton
+          variant="primary"
+          fullWidth
           onPress={() => router.push(`/(app)/assessments/${assessment.id}/review` as Href)}
+          rightIcon={<PaperPlaneTilt color="#fff" size={18} weight="bold" />}
         >
-          <AppText className="text-base font-bold text-white">Revisar e enviar</AppText>
-          <PaperPlaneTilt color="#FFFFFF" size={18} weight="bold" />
-        </Pressable>
+          <AppText style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>
+            Revisar e enviar
+          </AppText>
+        </AppButton>
       </Animated.View>
     </AppScreen>
   );

@@ -14,6 +14,8 @@ export type EvaluationDTO = {
   id: string;
   student: string;
   professional: { id?: string; _id?: string; name: string };
+  workout_professional?: { id?: string; _id?: string; name: string };
+  diet_professional?: { id?: string; _id?: string; name: string };
   questionnaire: QuestionnaireDTO;
   title: string;
   category: string;

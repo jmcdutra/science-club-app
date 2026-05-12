@@ -26,6 +26,7 @@ export type DietFood = {
   nutrition: MacroValues;
   notes?: string;
   substitutions?: DietFoodSubstitution[];
+  isExtra?: boolean;
 };
 
 export type DietMeal = {
@@ -52,7 +53,7 @@ export type DietPlan = {
   meals: DietMeal[];
 };
 
-export type MealStatus = 'pending' | 'partial' | 'done' | 'skipped';
+export type MealStatus = "pending" | "partial" | "done" | "skipped";
 
 export type FoodLog = {
   foodId: string;
@@ -71,6 +72,8 @@ export type MealLog = {
   foodLogs: FoodLog[];
   skippedReason?: string;
   updatedAt: string;
+  photoUri?: string;
+  photoName?: string;
 };
 
 export type DietDayLog = {

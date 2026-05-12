@@ -1,130 +1,349 @@
-import { ArrowLeft, Bell, ChatCircleText, EnvelopeSimple, LockKey, Phone, ShieldCheck } from 'phosphor-react-native';
-import { router } from 'expo-router';
-import { Pressable, Switch, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import {
+  ArrowLeft,
+  Bell,
+  ChatCircleText,
+  EnvelopeSimple,
+  LockKey,
+  Phone,
+} from "phosphor-react-native";
+import { router } from "expo-router";
+import { Pressable, ScrollView, Switch, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Animated, { FadeInDown } from "react-native-reanimated";
 
-import { AppScreen } from '@/src/shared/components/ui/AppScreen';
-import { AppText } from '@/src/shared/components/ui/AppText';
-import { cn } from '@/src/shared/utils/cn';
+import { AppText } from "@/src/shared/components/ui/AppText";
+import { useAppTheme } from "@/src/shared/theme/appTheme";
+import { useProfileStore } from "../services/profile.store";
+import { ProfilePreferences } from "../types";
 
-import { useProfileStore } from '../services/profile.store';
-import { ProfilePreferences } from '../types';
-
-const channels: { label: string; value: ProfilePreferences['communicationChannel']; icon: typeof Phone }[] = [
-  { label: 'WhatsApp', value: 'whatsapp', icon: Phone },
-  { label: 'Email', value: 'email', icon: EnvelopeSimple },
-  { label: 'App', value: 'app', icon: ChatCircleText },
+const channels: {
+  label: string;
+  value: ProfilePreferences["communicationChannel"];
+  icon: typeof Phone;
+}[] = [
+  { label: "WhatsApp", value: "whatsapp", icon: Phone },
+  { label: "Email", value: "email", icon: EnvelopeSimple },
+  { label: "App", value: "app", icon: ChatCircleText },
 ];
 
 export function ProfilePreferencesScreen() {
+  const { isDark } = useAppTheme();
   const preferences = useProfileStore((state) => state.profile.preferences);
   const setPreference = useProfileStore((state) => state.setPreference);
 
   return (
-    <AppScreen contentClassName="px-5 pb-12 pt-5">
-      <Animated.View entering={FadeInDown.duration(420)}>
-        <Pressable accessibilityRole="button" className="mb-8 h-12 w-12 items-center justify-center rounded-2xl bg-bg-surface" onPress={() => router.back()}>
-          <ArrowLeft color="#FFFFFF" size={22} weight="bold" />
-        </Pressable>
-
-        <View className="mb-7 rounded-[32px] border border-border-subtle bg-bg-surface p-5">
-          <View className="mb-5 h-14 w-14 items-center justify-center rounded-2xl bg-brand-primary/12">
-            <ShieldCheck color="#A78BFA" size={28} weight="duotone" />
-          </View>
-          <AppText className="text-4xl font-semibold leading-tight text-text-main">Preferências</AppText>
-          <AppText className="mt-3 text-base leading-snug text-text-soft">
-            Ajuste como o app lembra você de treinos, refeições e reavaliações.
+    <View style={{ flex: 1, backgroundColor: isDark ? "#000000" : "#FFFFFF" }}>
+      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+        {/* Header */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 24,
+            paddingTop: 12,
+            paddingBottom: 16,
+          }}
+        >
+          <Pressable
+            onPress={() => router.back()}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 99,
+              backgroundColor: isDark ? "#111111" : "#F9FAFB",
+              borderWidth: 1,
+              borderColor: isDark ? "#222222" : "#E5E7EB",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <ArrowLeft
+              color={isDark ? "#FFFFFF" : "#111827"}
+              size={20}
+              weight="bold"
+            />
+          </Pressable>
+          <AppText
+            className="font-heading"
+            style={{
+              fontSize: 20,
+              fontWeight: "700",
+              color: isDark ? "#FFFFFF" : "#111827",
+              marginLeft: 16,
+            }}
+          >
+            Preferências
           </AppText>
         </View>
-      </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(80).duration(420)} className="gap-3">
-        <PreferenceSwitch
-          description="Avisos de treino do dia e início do horário planejado."
-          icon={Bell}
-          title="Lembretes de treino"
-          value={preferences.workoutReminders}
-          onValueChange={(value) => setPreference('workoutReminders', value)}
-        />
-        <PreferenceSwitch
-          description="Alertas de refeições, água e registro com balança."
-          icon={Bell}
-          title="Lembretes de dieta"
-          value={preferences.mealReminders}
-          onValueChange={(value) => setPreference('mealReminders', value)}
-        />
-        <PreferenceSwitch
-          description="Prazos de questionários, fotos e parecer final."
-          icon={Bell}
-          title="Alertas de avaliação"
-          value={preferences.assessmentAlerts}
-          onValueChange={(value) => setPreference('assessmentAlerts', value)}
-        />
-        <PreferenceSwitch
-          description="Mantém evolução e fotos privadas por padrão."
-          icon={LockKey}
-          title="Progresso privado"
-          value={preferences.privateProgress}
-          onValueChange={(value) => setPreference('privateProgress', value)}
-        />
-      </Animated.View>
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View entering={FadeInDown.duration(420)}>
+            <AppText
+              style={{
+                fontSize: 14,
+                color: isDark ? "#888888" : "#6B7280",
+                marginBottom: 32,
+                lineHeight: 22,
+              }}
+            >
+              Controle como o app se comunica com você e gerencie suas
+              configurações de privacidade.
+            </AppText>
+          </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(160).duration(420)} className="mt-8">
-        <AppText className="mb-4 text-2xl font-semibold text-text-main">Canal preferido</AppText>
-        <View className="rounded-[28px] border border-border-subtle bg-bg-surface p-3">
-          <View className="flex-row gap-2">
-            {channels.map((channel) => {
-              const Icon = channel.icon;
-              const active = preferences.communicationChannel === channel.value;
+          {/* Notificações */}
+          <Animated.View entering={FadeInDown.delay(100).duration(420)}>
+            <AppText
+              style={{
+                fontSize: 11,
+                fontWeight: "700",
+                color: isDark ? "#666666" : "#94A3B8",
+                letterSpacing: 1.5,
+                marginBottom: 12,
+                marginLeft: 8,
+              }}
+            >
+              NOTIFICAÇÕES
+            </AppText>
+            <View
+              style={{
+                backgroundColor: isDark ? "#111111" : "#F9FAFB",
+                borderRadius: 24,
+                borderWidth: 1,
+                borderColor: isDark ? "#222222" : "#E5E7EB",
+                overflow: "hidden",
+                marginBottom: 32,
+              }}
+            >
+              <ToggleRow
+                icon={Bell}
+                iconColor="#FBBF24"
+                iconBg="rgba(234,179,8,0.12)"
+                title="Lembretes de treino"
+                subtitle="Avisos sobre seus treinos."
+                value={preferences.workoutReminders}
+                onValueChange={(v: boolean) =>
+                  setPreference("workoutReminders", v)
+                }
+              />
+              <ToggleRow
+                icon={Bell}
+                iconColor="#38BDF8"
+                iconBg="rgba(14,165,233,0.12)"
+                title="Lembretes de dieta"
+                subtitle="Alertas de refeições e hidratação."
+                value={preferences.mealReminders}
+                onValueChange={(v: boolean) =>
+                  setPreference("mealReminders", v)
+                }
+              />
+              <ToggleRow
+                icon={Bell}
+                iconColor="#A78BFA"
+                iconBg="rgba(139,92,246,0.12)"
+                title="Alertas de avaliação"
+                subtitle="Prazos para feedbacks e fotos."
+                value={preferences.assessmentAlerts}
+                onValueChange={(v: boolean) =>
+                  setPreference("assessmentAlerts", v)
+                }
+                last
+              />
+            </View>
+          </Animated.View>
 
-              return (
-                <Pressable
-                  key={channel.value}
-                  accessibilityRole="button"
-                  className={cn('min-h-[64px] flex-1 items-center justify-center rounded-[22px]', active ? 'bg-brand-primary' : 'bg-bg-base')}
-                  onPress={() => setPreference('communicationChannel', channel.value)}
+          {/* Privacidade */}
+          <Animated.View entering={FadeInDown.delay(150).duration(420)}>
+            <AppText
+              style={{
+                fontSize: 11,
+                fontWeight: "700",
+                color: isDark ? "#666666" : "#94A3B8",
+                letterSpacing: 1.5,
+                marginBottom: 12,
+                marginLeft: 8,
+              }}
+            >
+              PRIVACIDADE E COMUNICAÇÃO
+            </AppText>
+            <View
+              style={{
+                backgroundColor: isDark ? "#111111" : "#F9FAFB",
+                borderRadius: 24,
+                borderWidth: 1,
+                borderColor: isDark ? "#222222" : "#E5E7EB",
+                overflow: "hidden",
+                marginBottom: 32,
+              }}
+            >
+              <ToggleRow
+                icon={LockKey}
+                iconColor="#A78BFA"
+                iconBg="rgba(139,92,246,0.12)"
+                title="Progresso privado"
+                subtitle="Manter suas fotos privadas."
+                value={preferences.privateProgress}
+                onValueChange={(v: boolean) =>
+                  setPreference("privateProgress", v)
+                }
+              />
+
+              {/* Canal Picker */}
+              <View style={{ padding: 16 }}>
+                <AppText
+                  style={{
+                    fontSize: 15,
+                    fontWeight: "600",
+                    color: isDark ? "#FFFFFF" : "#111827",
+                    marginBottom: 4,
+                  }}
                 >
-                  <Icon color={active ? '#FFFFFF' : '#A78BFA'} size={21} weight="duotone" />
-                  <AppText className={cn('mt-2 text-xs font-semibold', active ? 'text-white' : 'text-text-muted')}>{channel.label}</AppText>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      </Animated.View>
-    </AppScreen>
+                  Canal de Comunicação
+                </AppText>
+                <AppText
+                  style={{
+                    fontSize: 13,
+                    color: isDark ? "#888888" : "#6B7280",
+                    marginBottom: 16,
+                  }}
+                >
+                  Por onde a equipe deve falar com você?
+                </AppText>
+
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {channels.map((ch) => {
+                    const Icon = ch.icon;
+                    const active =
+                      preferences.communicationChannel === ch.value;
+                    return (
+                      <Pressable
+                        key={ch.value}
+                        onPress={() =>
+                          setPreference("communicationChannel", ch.value)
+                        }
+                        style={{
+                          flex: 1,
+                          height: 50,
+                          borderRadius: 12,
+                          backgroundColor: active
+                            ? "#8B5CF6"
+                            : isDark
+                              ? "#222222"
+                              : "#FFFFFF",
+                          borderWidth: 1,
+                          borderColor: active
+                            ? "#8B5CF6"
+                            : isDark
+                              ? "#222222"
+                              : "#E5E7EB",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexDirection: "row",
+                        }}
+                      >
+                        <Icon
+                          color={
+                            active ? "#FFFFFF" : isDark ? "#888888" : "#6B7280"
+                          }
+                          size={16}
+                          weight={active ? "bold" : "regular"}
+                        />
+                        <AppText
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "600",
+                            color: active
+                              ? "#FFFFFF"
+                              : isDark
+                                ? "#888888"
+                                : "#6B7280",
+                            marginLeft: 6,
+                          }}
+                        >
+                          {ch.label}
+                        </AppText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+          </Animated.View>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
-function PreferenceSwitch({
-  description,
+function ToggleRow({
   icon: Icon,
-  onValueChange,
+  iconColor,
+  iconBg,
   title,
+  subtitle,
   value,
-}: {
-  description: string;
-  icon: typeof Bell;
-  onValueChange: (value: boolean) => void;
-  title: string;
-  value: boolean;
-}) {
+  onValueChange,
+  last,
+}: any) {
+  const { isDark } = useAppTheme();
   return (
-    <View className="flex-row items-center rounded-[24px] border border-border-subtle bg-bg-surface p-4">
-      <View className="h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary/12">
-        <Icon color="#A78BFA" size={22} weight="duotone" />
+    <>
+      <View style={{ flexDirection: "row", alignItems: "center", padding: 16 }}>
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            backgroundColor: iconBg,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Icon color={iconColor} size={20} weight="fill" />
+        </View>
+        <View style={{ flex: 1, marginLeft: 14 }}>
+          <AppText
+            style={{
+              fontSize: 15,
+              fontWeight: "600",
+              color: isDark ? "#FFFFFF" : "#111827",
+            }}
+          >
+            {title}
+          </AppText>
+          <AppText
+            style={{
+              fontSize: 13,
+              color: isDark ? "#888888" : "#6B7280",
+              marginTop: 2,
+            }}
+          >
+            {subtitle}
+          </AppText>
+        </View>
+        <Switch
+          ios_backgroundColor={isDark ? "#222222" : "#CBD5E1"}
+          thumbColor="#FFFFFF"
+          trackColor={{
+            false: isDark ? "#222222" : "#CBD5E1",
+            true: "#8B5CF6",
+          }}
+          value={value}
+          onValueChange={onValueChange}
+        />
       </View>
-      <View className="ml-4 flex-1">
-        <AppText className="text-base font-semibold text-text-main">{title}</AppText>
-        <AppText className="mt-1 text-sm leading-snug text-text-muted">{description}</AppText>
-      </View>
-      <Switch
-        ios_backgroundColor="#27272A"
-        thumbColor="#FFFFFF"
-        trackColor={{ false: '#27272A', true: '#8B5CF6' }}
-        value={value}
-        onValueChange={onValueChange}
-      />
-    </View>
+      {!last && (
+        <View
+          style={{
+            height: 1,
+            backgroundColor: isDark ? "#222222" : "#E5E7EB",
+            marginLeft: 70,
+          }}
+        />
+      )}
+    </>
   );
 }

@@ -2,8 +2,8 @@ import { StudentProfile } from '../types';
 
 export const mockStudentProfile: StudentProfile = {
   id: 'SC-240982',
-  name: 'João Silva',
-  email: 'joao.silva@email.com',
+  name: 'Kaleb Souza',
+  email: 'kalebsociais@gmail.com',
   phone: '(11) 98765-4321',
   city: 'São Paulo, SP',
   avatarVariant: 1,

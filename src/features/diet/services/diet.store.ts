@@ -1,16 +1,31 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 
-import { activeDietPlan } from '../data/dietPlan';
-import { initialDietLogs } from '../data/history';
-import { DietDayLog, DietFoodSubstitution, DietPlan, FoodLog, MacroValues, MealLog } from '../types';
-import { getTodayKey, resolveMealLogStatus, scaleNutrition } from '../utils';
+import { activeDietPlan } from "../data/dietPlan";
+import { initialDietLogs } from "../data/history";
+import {
+  DietDayLog,
+  DietFood,
+  DietFoodSubstitution,
+  DietPlan,
+  FoodLog,
+  MacroValues,
+  MealLog,
+} from "../types";
+import { getTodayKey, resolveMealLogStatus, scaleNutrition } from "../utils";
 
 type DietStore = {
   plan: DietPlan;
   selectedDate: string;
   dayLogs: Record<string, DietDayLog>;
+  mealExtrasByDate: Record<string, Record<string, DietFood[]>>;
+  setRemoteData: (plan: DietPlan, dayLog: DietDayLog) => void;
   setSelectedDate: (date: string) => void;
   addWater: (amountMl: number) => void;
+  setMealPhoto: (
+    mealId: string,
+    payload: { photoUri?: string; photoName?: string },
+  ) => void;
+  addExtraFood: (mealId: string, food: DietFood) => void;
   logFood: (payload: {
     mealId: string;
     foodId: string;
@@ -37,7 +52,9 @@ function upsertMealLog(dayLog: DietDayLog, mealLog: MealLog): DietDayLog {
   return {
     ...dayLog,
     mealLogs: exists
-      ? dayLog.mealLogs.map((item) => (item.mealId === mealLog.mealId ? mealLog : item))
+      ? dayLog.mealLogs.map((item) =>
+          item.mealId === mealLog.mealId ? mealLog : item,
+        )
       : [...dayLog.mealLogs, mealLog],
   };
 }
@@ -49,10 +66,22 @@ export const useDietStore = create<DietStore>((set, get) => ({
     ...initialDietLogs,
     [getTodayKey()]: makeEmptyDayLog(getTodayKey()),
   },
+  mealExtrasByDate: {},
+  setRemoteData: (plan, dayLog) =>
+    set((state) => ({
+      plan,
+      dayLogs: {
+        ...state.dayLogs,
+        [dayLog.date]: dayLog,
+      },
+      selectedDate: dayLog.date,
+    })),
   setSelectedDate: (date) => set({ selectedDate: date }),
   addWater: (amountMl) =>
     set((state) => {
-      const dayLog = state.dayLogs[state.selectedDate] ?? makeEmptyDayLog(state.selectedDate);
+      const dayLog =
+        state.dayLogs[state.selectedDate] ??
+        makeEmptyDayLog(state.selectedDate);
 
       return {
         dayLogs: {
@@ -64,17 +93,70 @@ export const useDietStore = create<DietStore>((set, get) => ({
         },
       };
     }),
+  setMealPhoto: (mealId, payload) =>
+    set((state) => {
+      const dayLog =
+        state.dayLogs[state.selectedDate] ??
+        makeEmptyDayLog(state.selectedDate);
+      const currentMealLog = dayLog.mealLogs.find(
+        (item) => item.mealId === mealId,
+      );
+      const nextMealLog: MealLog = {
+        mealId,
+        status: currentMealLog?.status ?? "partial",
+        foodLogs: currentMealLog?.foodLogs ?? [],
+        skippedReason: currentMealLog?.skippedReason,
+        updatedAt: new Date().toISOString(),
+        photoUri: payload.photoUri ?? currentMealLog?.photoUri,
+        photoName: payload.photoName ?? currentMealLog?.photoName,
+      };
+
+      return {
+        dayLogs: {
+          ...state.dayLogs,
+          [state.selectedDate]: upsertMealLog(dayLog, nextMealLog),
+        },
+      };
+    }),
+  addExtraFood: (mealId, food) =>
+    set((state) => ({
+      mealExtrasByDate: {
+        ...state.mealExtrasByDate,
+        [state.selectedDate]: {
+          ...state.mealExtrasByDate[state.selectedDate],
+          [mealId]: [
+            ...(state.mealExtrasByDate[state.selectedDate]?.[mealId] ?? []),
+            food,
+          ],
+        },
+      },
+    })),
   logFood: ({ mealId, foodId, actualGrams, replacement, customNutrition }) =>
     set((state) => {
       const meal = state.plan.meals.find((item) => item.id === mealId);
-      const food = meal?.foods.find((item) => item.id === foodId);
-      if (!meal || !food) return state;
+      const extraFoods =
+        state.mealExtrasByDate[state.selectedDate]?.[mealId] ?? [];
+      const mergedMeal = meal
+        ? {
+            ...meal,
+            foods: [...meal.foods, ...extraFoods],
+          }
+        : null;
+      const food =
+        meal?.foods.find((item) => item.id === foodId) ??
+        extraFoods.find((item) => item.id === foodId);
+      if (!meal || !mergedMeal || !food) return state;
 
       const source = replacement ?? food;
       const now = new Date().toISOString();
-      const dayLog = state.dayLogs[state.selectedDate] ?? makeEmptyDayLog(state.selectedDate);
-      const currentMealLog = dayLog.mealLogs.find((item) => item.mealId === mealId);
-      const otherFoodLogs = currentMealLog?.foodLogs.filter((item) => item.foodId !== foodId) ?? [];
+      const dayLog =
+        state.dayLogs[state.selectedDate] ??
+        makeEmptyDayLog(state.selectedDate);
+      const currentMealLog = dayLog.mealLogs.find(
+        (item) => item.mealId === mealId,
+      );
+      const otherFoodLogs =
+        currentMealLog?.foodLogs.filter((item) => item.foodId !== foodId) ?? [];
       const foodLog: FoodLog = {
         foodId,
         selectedFoodId: source.id,
@@ -88,9 +170,11 @@ export const useDietStore = create<DietStore>((set, get) => ({
       const nextFoodLogs = [...otherFoodLogs, foodLog];
       const nextMealLog: MealLog = {
         mealId,
-        status: resolveMealLogStatus(meal, nextFoodLogs),
+        status: resolveMealLogStatus(mergedMeal, nextFoodLogs),
         foodLogs: nextFoodLogs,
         updatedAt: now,
+        photoUri: currentMealLog?.photoUri,
+        photoName: currentMealLog?.photoName,
       };
 
       return {
@@ -104,14 +188,23 @@ export const useDietStore = create<DietStore>((set, get) => ({
     set((state) => {
       const meal = state.plan.meals.find((item) => item.id === mealId);
       if (!meal) return state;
+      const extraFoods =
+        state.mealExtrasByDate[state.selectedDate]?.[mealId] ?? [];
+      const foods = [...meal.foods, ...extraFoods];
 
       const now = new Date().toISOString();
-      const dayLog = state.dayLogs[state.selectedDate] ?? makeEmptyDayLog(state.selectedDate);
+      const dayLog =
+        state.dayLogs[state.selectedDate] ??
+        makeEmptyDayLog(state.selectedDate);
       const nextMealLog: MealLog = {
         mealId,
-        status: 'done',
+        status: "done",
         updatedAt: now,
-        foodLogs: meal.foods.map((food) => ({
+        photoUri: dayLog.mealLogs.find((item) => item.mealId === mealId)
+          ?.photoUri,
+        photoName: dayLog.mealLogs.find((item) => item.mealId === mealId)
+          ?.photoName,
+        foodLogs: foods.map((food) => ({
           foodId: food.id,
           selectedFoodId: food.id,
           selectedFoodName: food.name,
@@ -132,13 +225,19 @@ export const useDietStore = create<DietStore>((set, get) => ({
   skipMeal: (mealId) =>
     set((state) => {
       const now = new Date().toISOString();
-      const dayLog = state.dayLogs[state.selectedDate] ?? makeEmptyDayLog(state.selectedDate);
+      const dayLog =
+        state.dayLogs[state.selectedDate] ??
+        makeEmptyDayLog(state.selectedDate);
       const nextMealLog: MealLog = {
         mealId,
-        status: 'skipped',
+        status: "skipped",
         foodLogs: [],
-        skippedReason: 'Pulada pelo aluno',
+        skippedReason: "Pulada pelo aluno",
         updatedAt: now,
+        photoUri: dayLog.mealLogs.find((item) => item.mealId === mealId)
+          ?.photoUri,
+        photoName: dayLog.mealLogs.find((item) => item.mealId === mealId)
+          ?.photoName,
       };
 
       return {
@@ -150,7 +249,9 @@ export const useDietStore = create<DietStore>((set, get) => ({
     }),
   resetMeal: (mealId) =>
     set((state) => {
-      const dayLog = state.dayLogs[state.selectedDate] ?? makeEmptyDayLog(state.selectedDate);
+      const dayLog =
+        state.dayLogs[state.selectedDate] ??
+        makeEmptyDayLog(state.selectedDate);
 
       return {
         dayLogs: {

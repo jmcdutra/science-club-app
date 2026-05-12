@@ -2,14 +2,17 @@ import { ArrowLeft, CaretRight, Clock, Play } from 'phosphor-react-native';
 import { router, type Href, useLocalSearchParams } from 'expo-router';
 import { Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 
 import { AppText } from '@/src/shared/components/ui/AppText';
 import { useAppTheme } from '@/src/shared/theme/appTheme';
 import { cn } from '@/src/shared/utils/cn';
+import { useAuthStore } from '@/src/features/auth/services/auth.store';
 
 import { WorkoutExerciseListItem } from '../components/WorkoutExerciseListItem';
 import { getTotalSets, getWorkoutSession, getWorkoutSheet } from '../data/workoutSheets';
+import { getCurrentWorkout } from '../api/workouts';
 
 const MUSCLE_COLOR: Record<string, string> = {
   Abdomen: '#8B5CF6', Core: '#8B5CF6',
@@ -23,8 +26,18 @@ const MUSCLE_COLOR: Record<string, string> = {
 export function WorkoutSheetDetailScreen() {
   const { id, sessionId } = useLocalSearchParams<{ id: string; sessionId?: string }>();
   const { isDark } = useAppTheme();
-  const sheet = getWorkoutSheet(id);
-  const session = getWorkoutSession(id, sessionId);
+  const insets = useSafeAreaInsets();
+  const { session: authSession } = useAuthStore();
+  const { data } = useQuery({
+    queryKey: ['student-workout-current'],
+    queryFn: () => getCurrentWorkout(authSession?.token!),
+    enabled: !!authSession?.token,
+  });
+  const remoteSheet = data?.workout && data.workout.id === id ? data.workout : null;
+  const sheet = remoteSheet || getWorkoutSheet(id);
+  const session = remoteSheet
+    ? (sheet.sessions.find((s) => s.id === sessionId) || sheet.sessions[0])
+    : getWorkoutSession(id, sessionId);
   const sessionExercises = session.exercises.filter(Boolean);
   const totalSets = getTotalSets({ ...session, exercises: sessionExercises });
   const muscles = [...new Set(sessionExercises.map((e) => e.muscle))];
@@ -35,7 +48,11 @@ export function WorkoutSheetDetailScreen() {
         <ScrollView
           alwaysBounceVertical={false}
           bounces
-          contentContainerClassName="px-6 pt-8 pb-36"
+          contentContainerStyle={{
+            paddingHorizontal: 24,
+            paddingTop: 32,
+            paddingBottom: 136 + Math.max(insets.bottom, 12),
+          }}
           keyboardShouldPersistTaps="handled"
           overScrollMode="never"
           showsVerticalScrollIndicator={false}
@@ -73,7 +90,7 @@ export function WorkoutSheetDetailScreen() {
               <View className="h-4 w-px bg-border-subtle" />
               <View className="flex-row items-baseline gap-1">
                 <AppText className="text-xl font-bold text-text-main">{totalSets}</AppText>
-                <AppText className="text-xs text-text-muted">séries</AppText>
+                <AppText className="text-xs text-text-muted">séries val.</AppText>
               </View>
               <View className="h-4 w-px bg-border-subtle" />
               <View className="flex-row items-center gap-1">
@@ -173,9 +190,10 @@ export function WorkoutSheetDetailScreen() {
 
         {/* Sticky CTA */}
         <View
-          className="absolute bottom-0 left-0 right-0 px-6 pt-3 pb-8"
+          className="absolute bottom-0 left-0 right-0 px-6 pt-3"
           style={{ backgroundColor: isDark ? 'rgba(0,0,0,0.95)' : 'rgba(255,255,255,0.97)' }}
         >
+          <View style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
           <Pressable
             accessibilityRole="button"
             className="min-h-[56px] flex-row items-center justify-center gap-2.5 rounded-2xl bg-brand-primary"
@@ -186,6 +204,7 @@ export function WorkoutSheetDetailScreen() {
             <Play color="#FFFFFF" size={18} weight="fill" />
             <AppText className="text-base font-bold text-white">Iniciar Treino</AppText>
           </Pressable>
+          </View>
         </View>
       </SafeAreaView>
     </View>

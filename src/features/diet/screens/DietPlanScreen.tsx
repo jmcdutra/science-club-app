@@ -2,18 +2,32 @@ import { ArrowLeft, CaretRight, Drop, NotePencil, Pill, UserCircle } from 'phosp
 import { router, type Href } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 import { AppScreen } from '@/src/shared/components/ui/AppScreen';
 import { AppText } from '@/src/shared/components/ui/AppText';
 import { useAppTheme } from '@/src/shared/theme/appTheme';
+import { useAuthStore } from '@/src/features/auth/services/auth.store';
 
 import { MacroProgress } from '../components/MacroProgress';
 import { useDietStore } from '../services/diet.store';
+import { getCurrentDiet } from '../api/diet';
 import { getMealTotal, getPlanTotal } from '../utils';
 
 export function DietPlanScreen() {
   const { isDark } = useAppTheme();
+  const { session } = useAuthStore();
   const plan = useDietStore((state) => state.plan);
+  const setRemoteData = useDietStore((state) => state.setRemoteData);
+  const { data } = useQuery({
+    queryKey: ['student-diet-current'],
+    queryFn: () => getCurrentDiet(session?.token!),
+    enabled: !!session?.token,
+  });
+  useEffect(() => {
+    if (data?.diet && data?.dayLog) setRemoteData(data.diet, data.dayLog);
+  }, [data?.diet, data?.dayLog, setRemoteData]);
   const planTotal = getPlanTotal(plan);
 
   return (

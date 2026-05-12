@@ -107,13 +107,13 @@ export function RegisterStep({ cpf, email, isLoading, onSubmit }: RegisterStepPr
       </View>
 
       <View className="pb-10">
-        <AppButton 
-          loading={isLoading} 
+        <AppButton
+          fullWidth
+          loading={isLoading}
           onPress={handleSubmit(onSubmit)}
-          className="bg-brand-primary h-16 rounded-2xl"
-          rightIcon={<UserPlus size={24} color="#FFFFFF" />}
+          rightIcon={<UserPlus size={18} color="#FFFFFF" />}
         >
-          <AppText className="text-white font-bold text-lg">Criar Minha Conta</AppText>
+          <AppText style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 15 }}>Criar Minha Conta</AppText>
         </AppButton>
       </View>
     </View>

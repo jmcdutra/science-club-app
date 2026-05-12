@@ -1,364 +1,935 @@
-import Svg, { Circle } from 'react-native-svg';
-import { CaretRight, Drop, Minus, Notebook, Plus } from 'phosphor-react-native';
-import { router, type Href } from 'expo-router';
-import { Pressable, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import {
+  AppleLogo,
+  CaretRight,
+  Drop,
+  ForkKnife,
+  Lightning,
+  Minus,
+  Sun,
+  Moon,
+  Info,
+} from "phosphor-react-native";
+import { router, type Href } from "expo-router";
+import { Pressable, ScrollView, View } from "react-native";
+import * as Linking from "expo-linking";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 
-import { AppShell } from '@/src/shared/components/layout/AppShell';
-import { AppText } from '@/src/shared/components/ui/AppText';
-import { useAppTheme } from '@/src/shared/theme/appTheme';
+import { AppText } from "@/src/shared/components/ui/AppText";
+import { NotificationsModal } from "@/src/shared/components/ui/NotificationsModal";
+import { PageHeader } from "@/src/shared/components/layout/PageHeader";
+import { useAppTheme } from "@/src/shared/theme/appTheme";
+import { useAuthStore } from "@/src/features/auth/services/auth.store";
+import { EmptyPlanState } from "@/src/shared/components/layout/EmptyPlanState";
 
-import { useDietStore, useSelectedDietDay } from '../services/diet.store';
+import {
+  createEvaluation,
+  getStudentEvaluations,
+  type EvaluationDTO,
+} from "../../assessments/api/assessments";
+import { getCurrentDiet, updateDietWater } from "../api/diet";
+import { useDietStore, useSelectedDietDay } from "../services/diet.store";
 import {
   getAdherence,
   getConsumedMacros,
   getMealLog,
   getMealStatus,
-  getMealTotal,
   getNextMeal,
   getProgressPercent,
-} from '../utils';
+} from "../utils";
+import type { DietFood, DietMeal, MealStatus } from "../types";
 
-const STATUS_COLOR: Record<string, string> = {
-  pending: '#3A3A3A',
-  partial: '#FBBF24',
-  done: '#22C55E',
-  skipped: '#52525B',
+const STATUS_META: Record<
+  MealStatus,
+  { label: string; color: string; bg: string }
+> = {
+  pending: {
+    label: "Planejada",
+    color: "#555555",
+    bg: "rgba(255,255,255,0.05)",
+  },
+  partial: {
+    label: "Em andamento",
+    color: "#FBBF24",
+    bg: "rgba(251,191,36,0.10)",
+  },
+  done: { label: "Concluída", color: "#22C55E", bg: "rgba(34,197,94,0.12)" },
+  skipped: { label: "Pulada", color: "#FB7185", bg: "rgba(251,113,133,0.10)" },
 };
 
-function Ring({ size = 44, sw = 4, pct, color }: { size?: number; sw?: number; pct: number; color: string }) {
-  const r = (size - sw) / 2;
-  const circ = 2 * Math.PI * r;
-  const offset = circ - (Math.min(100, Math.max(0, pct)) / 100) * circ;
-  const cx = size / 2;
+const ADHERENCE_MOCK = [82, 91, 75, 0, 0, 0, 0];
+const ADHERENCE_DAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+type TabKey = "hoje" | "plano" | "aderencia";
+
+function mealIcon(meal: DietMeal) {
+  const key = `${meal.name} ${meal.context}`.toLowerCase();
+  if (key.includes("cafe")) return Sun;
+  if (key.includes("lanche")) return AppleLogo;
+  if (key.includes("treino")) return Lightning;
+  if (key.includes("jantar") || key.includes("ceia")) return Moon;
+  return ForkKnife;
+}
+
+function formatPtDate(dateKey: string) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  const day = date
+    .toLocaleDateString("pt-BR", { weekday: "short" })
+    .replace(".", "");
+  const dayNum = date.toLocaleDateString("pt-BR", { day: "numeric" });
+  const month = date
+    .toLocaleDateString("pt-BR", { month: "short" })
+    .replace(".", "");
+  return `${day.charAt(0).toUpperCase()}${day.slice(1)}, ${dayNum} ${month}`;
+}
+
+function MacroBar({
+  label,
+  value,
+  max,
+  color,
+  unit = "g",
+}: {
+  label: string;
+  value: number;
+  max: number;
+  color: string;
+  unit?: string;
+}) {
+  const pct = Math.min(100, Math.round((value / Math.max(1, max)) * 100));
+  const over = value > max;
   return (
-    <Svg width={size} height={size}>
-      <Circle cx={cx} cy={cx} r={r} stroke={`${color}22`} strokeWidth={sw} fill="none" />
-      <Circle
-        cx={cx}
-        cy={cx}
-        r={r}
-        stroke={color}
-        strokeWidth={sw}
-        fill="none"
-        strokeDasharray={`${circ} ${circ}`}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
-        rotation="-90"
-        origin={`${cx}, ${cx}`}
-      />
-    </Svg>
+    <View>
+      <View
+        style={{
+          alignItems: "baseline",
+          flexDirection: "row",
+          justifyContent: "space-between",
+          marginBottom: 5,
+        }}
+      >
+        <AppText className="text-[11px] font-bold uppercase tracking-[0.08em] text-text-muted">
+          {label}
+        </AppText>
+        <AppText
+          className="text-xs font-bold"
+          style={{ color: over ? "#FB7185" : "#FFFFFF" }}
+        >
+          {Math.round(value)}
+          <AppText className="text-[10px] font-normal text-text-muted">
+            {" "}
+            / {max}
+            {unit}
+          </AppText>
+        </AppText>
+      </View>
+      <View className="h-1.5 overflow-hidden rounded-full bg-bg-elevated">
+        <View
+          className="h-full rounded-full"
+          style={{
+            backgroundColor: over ? "#FB7185" : color,
+            width: `${pct}%`,
+          }}
+        />
+      </View>
+    </View>
+  );
+}
+
+function MealCard({
+  meal,
+  foods,
+  status,
+  loggedItems,
+  onOpen,
+}: {
+  meal: DietMeal;
+  foods: DietFood[];
+  status: MealStatus;
+  loggedItems: number;
+  onOpen: () => void;
+}) {
+  const st = STATUS_META[status];
+  const total = foods.reduce((acc, food) => acc + food.nutrition.calories, 0);
+  const Icon = mealIcon(meal);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onOpen}
+      style={{
+        alignItems: "center",
+        backgroundColor: "#111111",
+        borderColor: "#1F1F1F",
+        borderRadius: 16,
+        borderWidth: 1,
+        flexDirection: "row",
+        gap: 12,
+        marginBottom: 8,
+        paddingHorizontal: 14,
+        paddingVertical: 13,
+      }}
+    >
+      <View
+        style={{
+          alignItems: "center",
+          backgroundColor: st.bg,
+          borderRadius: 12,
+          height: 40,
+          justifyContent: "center",
+          width: 40,
+        }}
+      >
+        <Icon color={st.color} size={16} weight="duotone" />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View
+          style={{
+            alignItems: "center",
+            flexDirection: "row",
+            gap: 6,
+            marginBottom: 2,
+          }}
+        >
+          <AppText className="text-[13px] font-semibold text-text-main">
+            {meal.name}
+          </AppText>
+          <View
+            style={{
+              backgroundColor: st.bg,
+              borderRadius: 999,
+              paddingHorizontal: 7,
+              paddingVertical: 2,
+            }}
+          >
+            <AppText
+              className="text-[9px] font-bold uppercase"
+              style={{ color: st.color }}
+            >
+              {st.label}
+            </AppText>
+          </View>
+        </View>
+        <AppText className="text-[11px] text-text-muted">
+          {meal.time} · {loggedItems}/{foods.length} itens ·{" "}
+          {loggedItems > 0 ? Math.round(total) : Math.round(total)} kcal
+        </AppText>
+      </View>
+      <View
+        style={{
+          alignItems: "center",
+          flexDirection: "row",
+          flexShrink: 0,
+          gap: 3,
+        }}
+      >
+        {foods.slice(0, 5).map((food, index) => (
+          <View
+            key={`${meal.id}-${food.id}-${index}`}
+            style={{
+              backgroundColor: index < loggedItems ? "#22C55E" : "#1F1F1F",
+              borderRadius: 999,
+              height: 6,
+              width: 6,
+            }}
+          />
+        ))}
+        {foods.length > 5 ? (
+          <AppText className="text-[9px] text-text-muted">
+            +{foods.length - 5}
+          </AppText>
+        ) : null}
+      </View>
+      <CaretRight color="#6B7280" size={13} weight="bold" />
+    </Pressable>
   );
 }
 
 export function DietDashboardScreen() {
   const { isDark } = useAppTheme();
+  const { session } = useAuthStore();
+  const [activeTab, setActiveTab] = useState<TabKey>("hoje");
+  const [isCreating, setIsCreating] = useState(false);
+  const [notifVisible, setNotifVisible] = useState(false);
+  const queryClient = useQueryClient();
   const plan = useDietStore((state) => state.plan);
-  const addWater = useDietStore((state) => state.addWater);
+  const setRemoteData = useDietStore((state) => state.setRemoteData);
+  const mealExtrasByDate = useDietStore((state) => state.mealExtrasByDate);
+  const selectedDate = useDietStore((state) => state.selectedDate);
   const dayLog = useSelectedDietDay();
+
+  const { data: evaluations } = useQuery({
+    queryKey: ["assessments"],
+    queryFn: () => getStudentEvaluations(session?.token!),
+    enabled: !!session?.token,
+  });
+  const { data, isLoading } = useQuery({
+    queryKey: ["student-diet-current"],
+    queryFn: () => getCurrentDiet(session?.token!),
+    enabled: !!session?.token,
+  });
+  const addWaterMutation = useMutation({
+    mutationFn: (amountMl: number) =>
+      updateDietWater(session?.token!, amountMl),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["student-diet-current"] }),
+  });
+
+  useEffect(() => {
+    if (data?.diet && data?.dayLog) setRemoteData(data.diet, data.dayLog);
+  }, [data?.diet, data?.dayLog, setRemoteData]);
+
+  const questionnaire = session?.released_questionnaire;
+  const upgradeUrl = data?.whatsappUpgradeUrl;
+  const hasSubmittedEvaluation = evaluations?.some(
+    (ev: EvaluationDTO) =>
+      (ev.questionnaire.id === questionnaire?.id ||
+        (ev.questionnaire as any)._id === questionnaire?.id) &&
+      ["answered", "analysis", "done"].includes(ev.status),
+  );
+  const showQuestionnaire = Boolean(questionnaire && !hasSubmittedEvaluation);
+
+  const handleStartAssessment = async () => {
+    if (!session?.token || !session?.released_questionnaire?.id) return;
+    try {
+      setIsCreating(true);
+      const evalData = await createEvaluation(
+        session.token,
+        session.released_questionnaire.id,
+      );
+      router.push(`/(app)/assessments/${evalData.id}` as Href);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  if (!isLoading && data?.hasAccess === false) {
+    return (
+      <EmptyPlanState
+        eyebrow="Acesso restrito"
+        title="Seu plano ainda não inclui dieta"
+        subtitle="Nossa equipe pode liberar o acompanhamento nutricional para você. Assim que estiver ativo, tudo aparecerá aqui."
+        action={
+          upgradeUrl
+            ? {
+                label: "Falar com a equipe",
+                onPress: () => Linking.openURL(upgradeUrl),
+              }
+            : null
+        }
+      />
+    );
+  }
+
+  if (!isLoading && data?.hasAccess !== false && !data?.diet) {
+    if (showQuestionnaire) {
+      return (
+        <EmptyPlanState
+          eyebrow="Ação necessária"
+          title="Responda a avaliação"
+          subtitle="Antes de montar sua dieta, nossa equipe precisa das suas respostas para preparar um plano alinhado com sua rotina."
+          action={{
+            label: isCreating ? "Carregando..." : "Responder agora",
+            onPress: handleStartAssessment,
+          }}
+        />
+      );
+    }
+
+    return (
+      <EmptyPlanState
+        eyebrow="Responda a avaliação"
+        title="Sua dieta está sendo preparada"
+        subtitle="Nossa equipe está montando seu plano alimentar personalizado. Assim que ele estiver pronto, você verá tudo aqui."
+      />
+    );
+  }
+
+  const extrasByMeal = mealExtrasByDate[selectedDate] ?? {};
+  const meals = plan.meals.map((meal) => ({
+    ...meal,
+    foods: [...meal.foods, ...(extrasByMeal[meal.id] ?? [])],
+  }));
+
   const consumed = getConsumedMacros(dayLog);
   const adherence = getAdherence(plan, dayLog);
   const nextMeal = getNextMeal(plan, dayLog);
-  const waterPercent = getProgressPercent(dayLog.waterMl, plan.targets.waterMl);
-
-  const cellBg = isDark ? '#111111' : '#F5F5F5';
-  const cellBorder = isDark ? '#1E1E1E' : '#EBEBEB';
-  const dividerColor = isDark ? '#1A1A1A' : '#F0F0F0';
-
-  const macros = [
-    {
-      label: 'Calorias',
-      consumed: Math.round(consumed.calories),
-      target: plan.targets.calories,
-      remaining: Math.max(0, plan.targets.calories - consumed.calories),
-      unit: 'kcal',
-      color: '#8B5CF6',
-      pct: getProgressPercent(consumed.calories, plan.targets.calories),
-      over: consumed.calories > plan.targets.calories,
-    },
-    {
-      label: 'Proteína',
-      consumed: Math.round(consumed.protein),
-      target: plan.targets.protein,
-      remaining: Math.max(0, plan.targets.protein - consumed.protein),
-      unit: 'g',
-      color: '#38BDF8',
-      pct: getProgressPercent(consumed.protein, plan.targets.protein),
-      over: consumed.protein > plan.targets.protein,
-    },
-    {
-      label: 'Carboidratos',
-      consumed: Math.round(consumed.carbs),
-      target: plan.targets.carbs,
-      remaining: Math.max(0, plan.targets.carbs - consumed.carbs),
-      unit: 'g',
-      color: '#F59E0B',
-      pct: getProgressPercent(consumed.carbs, plan.targets.carbs),
-      over: consumed.carbs > plan.targets.carbs,
-    },
-    {
-      label: 'Gorduras',
-      consumed: Math.round(consumed.fat),
-      target: plan.targets.fat,
-      remaining: Math.max(0, plan.targets.fat - consumed.fat),
-      unit: 'g',
-      color: '#FB7185',
-      pct: getProgressPercent(consumed.fat, plan.targets.fat),
-      over: consumed.fat > plan.targets.fat,
-    },
-  ];
+  const waterGoal = plan.targets.waterMl;
+  const waterPct = Math.min(100, getProgressPercent(dayLog.waterMl, waterGoal));
+  const completedMeals = meals.filter(
+    (meal) => getMealStatus(meal, getMealLog(dayLog, meal.id)) === "done",
+  ).length;
+  const goals = {
+    kcal: plan.targets.calories,
+    p: plan.targets.protein,
+    c: plan.targets.carbs,
+    fat: plan.targets.fat,
+  };
 
   return (
-    <AppShell title="Sua Dieta" contentClassName="pb-36">
-
-      {/* ─── PLANO BANNER ─────────────────────── */}
-      <Animated.View entering={FadeInDown.delay(100).duration(600)} className="mb-6">
-        <Pressable
-          accessibilityRole="button"
-          style={{
-            borderRadius: 20,
-            borderWidth: 1,
-            borderColor: cellBorder,
-            backgroundColor: cellBg,
-            paddingHorizontal: 16,
-            paddingVertical: 14,
-            flexDirection: 'row',
-            alignItems: 'center',
-          }}
-          onPress={() => router.push('/(app)/diet/plan' as Href)}
+    <View style={{ flex: 1, backgroundColor: '#000000' }}>
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <PageHeader title="Dieta" onNotificationPress={() => setNotifVisible(true)} />
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          bounces
+          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 148, paddingTop: 4 }}
         >
-          <View style={{ flex: 1 }}>
-            <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em] mb-1">
-              {plan.professional} · v{plan.version}
-            </AppText>
-            <AppText className="text-base font-bold text-text-main">{plan.name}</AppText>
-            <AppText className="text-xs text-text-muted mt-0.5" numberOfLines={1}>
-              {plan.objective}
-            </AppText>
+        <Animated.View entering={FadeInDown.duration(400)}>
+          <View className="mb-5 flex-row gap-1 rounded-xl bg-bg-surface p-1">
+            {(
+              [
+                ["hoje", "Hoje"],
+                ["plano", "Plano Alimentar"],
+                ["aderencia", "Aderência"],
+              ] as [TabKey, string][]
+            ).map(([key, label]) => {
+              const active = activeTab === key;
+              return (
+                <Pressable
+                  key={key}
+                  accessibilityRole="button"
+                  className="flex-1 rounded-[9px] px-2 py-2"
+                  onPress={() => setActiveTab(key)}
+                  style={{
+                    backgroundColor: active
+                      ? isDark
+                        ? "#18181B"
+                        : "#FFFFFF"
+                      : "transparent",
+                  }}
+                >
+                  <AppText
+                    className={
+                      active
+                        ? "text-center text-[11px] font-bold text-text-main"
+                        : "text-center text-[11px] font-bold text-text-muted"
+                    }
+                  >
+                    {label}
+                  </AppText>
+                </Pressable>
+              );
+            })}
           </View>
-          <Notebook color="#A78BFA" size={22} weight="duotone" style={{ marginLeft: 12 }} />
-        </Pressable>
-      </Animated.View>
+        </Animated.View>
 
-      {/* ─── METAS DO DIA ─────────────────────── */}
-      <Animated.View entering={FadeInDown.delay(200).duration(600)} className="mb-8">
-        <View className="flex-row items-center justify-between border-b border-border-subtle pb-4 mb-5">
-          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">
-            Metas de Hoje
-          </AppText>
-          <View
-            style={{
-              backgroundColor: adherence >= 80 ? '#22C55E18' : '#F59E0B18',
-              borderRadius: 99,
-              paddingHorizontal: 9,
-              paddingVertical: 4,
-            }}
-          >
-            <AppText
-              className="text-[10px] font-bold uppercase tracking-wide"
-              style={{ color: adherence >= 80 ? '#22C55E' : '#F59E0B' }}
-            >
-              {adherence}% aderência
-            </AppText>
-          </View>
-        </View>
-
-        {/* 2×2 macro ring grid */}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          {macros.map((macro) => (
-            <View
-              key={macro.label}
+        {activeTab === "hoje" ? (
+          <>
+            <Animated.View
+              entering={FadeInDown.delay(80).duration(400)}
               style={{
-                width: '47.5%',
-                borderRadius: 20,
+                backgroundColor: "#111111",
                 borderWidth: 1,
-                borderColor: cellBorder,
-                backgroundColor: cellBg,
-                padding: 14,
+                borderColor: "#1F1F1F",
+                borderRadius: 20,
+                padding: 16,
+                marginBottom: 12,
               }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
-                <AppText className="text-[11px] font-bold uppercase tracking-wide text-text-muted">
-                  {macro.label}
+              <View
+                style={{
+                  alignItems: "center",
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  marginBottom: 12,
+                }}
+              >
+                <AppText className="text-[15px] font-bold text-text-main">
+                  Resumo do dia
                 </AppText>
-                <Ring size={38} sw={3.5} pct={macro.pct} color={macro.color} />
+                <AppText className="text-[20px] font-bold text-brand-secondary">
+                  {Math.round(consumed.calories)}
+                  <AppText className="text-[11px] font-normal text-text-muted">
+                    {" "}
+                    / {goals.kcal} kcal
+                  </AppText>
+                </AppText>
               </View>
 
-              {macro.over ? (
-                <AppText className="text-xl font-bold" style={{ color: '#FB7185', letterSpacing: -0.5 }}>
-                  Meta!
-                </AppText>
-              ) : (
-                <AppText className="text-xl font-bold text-text-main" style={{ letterSpacing: -0.5 }}>
-                  {Math.round(macro.remaining)}
-                  <AppText className="text-xs font-normal text-text-muted"> {macro.unit}</AppText>
-                </AppText>
-              )}
-              <AppText className="text-[11px] text-text-muted mt-0.5">
-                {macro.consumed}/{macro.target}{macro.unit}
-              </AppText>
-            </View>
-          ))}
-        </View>
-      </Animated.View>
-
-      {/* ─── ÁGUA ─────────────────────────────── */}
-      <Animated.View entering={FadeInDown.delay(340).duration(600)} className="mb-8">
-        <View
-          style={{
-            borderRadius: 18,
-            borderWidth: 1,
-            borderColor: cellBorder,
-            backgroundColor: cellBg,
-            padding: 14,
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <Drop color="#22D3EE" size={16} weight="duotone" />
-            <AppText className="text-sm font-bold text-text-main" style={{ flex: 1 }}>Hidratação</AppText>
-            <AppText className="text-sm font-bold text-cyan-400">
-              {dayLog.waterMl}
-              <AppText className="font-normal text-text-muted"> / {plan.targets.waterMl}ml</AppText>
-            </AppText>
-          </View>
-
-          <View className="h-1.5 rounded-full bg-cyan-400/15 overflow-hidden mb-3">
-            <View
-              className="h-full rounded-full bg-cyan-400"
-              style={{ width: `${Math.min(100, waterPercent)}%` }}
-            />
-          </View>
-
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {[250, 500].map((ml) => (
-              <Pressable
-                key={ml}
-                className="flex-1 h-10 flex-row items-center justify-center rounded-xl bg-cyan-400/10 gap-1.5"
-                onPress={() => addWater(ml)}
-              >
-                <Plus color="#22D3EE" size={13} weight="bold" />
-                <AppText className="text-sm font-bold text-cyan-500">{ml}ml</AppText>
-              </Pressable>
-            ))}
-            <Pressable
-              className="w-10 h-10 items-center justify-center rounded-xl bg-red-400/10"
-              onPress={() => addWater(-250)}
-            >
-              <Minus color="#F87171" size={13} weight="bold" />
-            </Pressable>
-          </View>
-        </View>
-      </Animated.View>
-
-      {/* ─── LOG DE REFEIÇÕES ─────────────────── */}
-      <Animated.View entering={FadeInDown.delay(460).duration(600)} className="mb-8">
-        <View className="flex-row items-center justify-between border-b border-border-subtle pb-4 mb-1">
-          <AppText className="text-[11px] font-bold text-text-muted uppercase tracking-[0.25em]">
-            Refeições
-          </AppText>
-          <AppText className="text-xs text-text-muted">{plan.meals.length} refeições</AppText>
-        </View>
-
-        <View>
-          {plan.meals.map((meal, mealIdx) => {
-            const mealLog = getMealLog(dayLog, meal.id);
-            const status = getMealStatus(meal, mealLog);
-            const mealTotal = getMealTotal(meal);
-            const isNext = meal.id === nextMeal.id;
-            const isLast = mealIdx === plan.meals.length - 1;
-            const showFoods = isNext || status === 'done' || status === 'partial';
-
-            return (
-              <View
-                key={meal.id}
-                style={!isLast ? { borderBottomWidth: 1, borderBottomColor: dividerColor } : undefined}
-              >
-                {/* Meal row */}
-                <Pressable
-                  accessibilityRole="button"
-                  style={{ paddingVertical: 14, flexDirection: 'row', alignItems: 'center' }}
-                  onPress={() => router.push(`/(app)/diet/meals/${meal.id}` as Href)}
-                >
-                  <View
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 4,
-                      backgroundColor: STATUS_COLOR[status] ?? '#3A3A3A',
-                      marginRight: 12,
-                    }}
-                  />
-                  <AppText className="text-xs text-text-muted" style={{ width: 42 }}>
-                    {meal.time}
-                  </AppText>
-                  <AppText
-                    className={`flex-1 text-base font-bold ${isNext ? 'text-brand-secondary' : 'text-text-main'}`}
-                  >
-                    {meal.name}
-                  </AppText>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    {isNext && (
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 14 }}>
+                {[
+                  {
+                    lbl: "Proteína",
+                    val: Math.round(consumed.protein),
+                    max: goals.p,
+                    color: "#38BDF8",
+                  },
+                  {
+                    lbl: "Carbs",
+                    val: Math.round(consumed.carbs),
+                    max: goals.c,
+                    color: "#F59E0B",
+                  },
+                  {
+                    lbl: "Gorduras",
+                    val: Math.round(consumed.fat),
+                    max: goals.fat,
+                    color: "#FB7185",
+                  },
+                ].map((macro) => {
+                  const pct = Math.min(
+                    100,
+                    (macro.val / Math.max(1, macro.max)) * 100,
+                  );
+                  return (
+                    <View
+                      key={macro.lbl}
+                      style={{
+                        alignItems: "center",
+                        backgroundColor: "#18181B",
+                        borderRadius: 14,
+                        flex: 1,
+                        gap: 5,
+                        paddingBottom: 8,
+                        paddingHorizontal: 10,
+                        paddingTop: 10,
+                      }}
+                    >
                       <View
                         style={{
-                          backgroundColor: '#8B5CF618',
-                          borderRadius: 99,
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
+                          alignItems: "center",
+                          borderColor: `${macro.color}22`,
+                          borderRadius: 999,
+                          borderWidth: 3,
+                          height: 40,
+                          justifyContent: "center",
+                          width: 40,
                         }}
-                      >
-                        <AppText className="text-[10px] font-bold text-brand-secondary uppercase tracking-wide">
-                          Agora
-                        </AppText>
-                      </View>
-                    )}
-                    <AppText className="text-xs text-text-muted">
-                      {Math.round(mealTotal.calories)} kcal
-                    </AppText>
-                    <CaretRight color={isDark ? '#333' : '#CCC'} size={13} weight="bold" />
-                  </View>
-                </Pressable>
-
-                {/* Food items preview */}
-                {showFoods && meal.foods.length > 0 && (
-                  <View style={{ paddingLeft: 56, paddingBottom: 10 }}>
-                    {meal.foods.slice(0, 3).map((food) => (
-                      <View
-                        key={food.id}
-                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 3 }}
                       >
                         <View
                           style={{
-                            width: 4,
-                            height: 4,
-                            borderRadius: 2,
-                            backgroundColor: isDark ? '#2E2E2E' : '#DADADA',
-                            marginRight: 8,
+                            position: "absolute",
+                            inset: -3,
+                            borderRadius: 999,
+                            borderWidth: 3,
+                            borderColor: "transparent",
+                            borderTopColor: macro.color,
+                            transform: [{ rotate: `${pct * 3.6}deg` }],
                           }}
                         />
-                        <AppText className="text-sm text-text-muted flex-1" numberOfLines={1}>
+                      </View>
+                      <AppText className="text-[13px] font-bold text-text-main">
+                        {macro.val}g
+                      </AppText>
+                      <AppText className="text-[9px] font-semibold uppercase tracking-[0.06em] text-text-muted">
+                        {macro.lbl}
+                      </AppText>
+                    </View>
+                  );
+                })}
+              </View>
+
+              <MacroBar
+                label="Calorias"
+                value={consumed.calories}
+                max={goals.kcal}
+                color="#8B5CF6"
+                unit=" kcal"
+              />
+            </Animated.View>
+
+            <Animated.View
+              entering={FadeInDown.delay(140).duration(400)}
+              style={{
+                backgroundColor: "#111111",
+                borderWidth: 1,
+                borderColor: "#1F1F1F",
+                borderRadius: 16,
+                padding: 14,
+                marginBottom: 14,
+              }}
+            >
+              <View
+                style={{
+                  alignItems: "center",
+                  flexDirection: "row",
+                  gap: 10,
+                  marginBottom: 8,
+                }}
+              >
+                <View
+                  style={{
+                    alignItems: "center",
+                    backgroundColor: "rgba(34,211,238,.12)",
+                    borderRadius: 999,
+                    height: 32,
+                    justifyContent: "center",
+                    width: 32,
+                  }}
+                >
+                  <Drop color="#22D3EE" size={16} weight="duotone" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <AppText className="text-[12px] font-bold text-cyan-400">
+                    Hidratação
+                  </AppText>
+                  <AppText className="text-[10px] text-text-muted">
+                    Meta: {waterGoal / 1000}L/dia
+                  </AppText>
+                </View>
+                <AppText className="text-[16px] font-bold text-cyan-400">
+                  {(dayLog.waterMl / 1000).toFixed(2).replace(".", ",")}
+                  <AppText className="text-[10px] font-normal text-text-muted">
+                    {" "}
+                    / {(waterGoal / 1000).toFixed(0)}L
+                  </AppText>
+                </AppText>
+              </View>
+              <View className="mb-2 h-1.5 overflow-hidden rounded-full bg-cyan-400/15">
+                <View
+                  className="h-full rounded-full bg-cyan-400"
+                  style={{ width: `${waterPct}%` }}
+                />
+              </View>
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                {[150, 250, 500].map((ml) => (
+                  <Pressable
+                    key={ml}
+                    style={{
+                      alignItems: "center",
+                      backgroundColor: "rgba(34,211,238,.10)",
+                      borderRadius: 9,
+                      flex: 1,
+                      height: 32,
+                      justifyContent: "center",
+                    }}
+                    onPress={() => addWaterMutation.mutate(ml)}
+                  >
+                    <AppText className="text-[11px] font-bold text-cyan-400">
+                      +{ml}ml
+                    </AppText>
+                  </Pressable>
+                ))}
+                <Pressable
+                  style={{
+                    alignItems: "center",
+                    backgroundColor: "rgba(251,113,133,.08)",
+                    borderRadius: 9,
+                    height: 32,
+                    justifyContent: "center",
+                    width: 32,
+                  }}
+                  onPress={() => addWaterMutation.mutate(-250)}
+                >
+                  <Minus color="#FB7185" size={13} weight="bold" />
+                </Pressable>
+              </View>
+            </Animated.View>
+
+            <Animated.View entering={FadeInDown.delay(200).duration(400)}>
+              <View className="mb-2 flex-row items-center justify-between">
+                <AppText className="text-[11px] font-bold uppercase tracking-[0.22em] text-text-muted">
+                  Refeições
+                </AppText>
+                <AppText className="text-xs font-semibold text-brand-secondary">
+                  {completedMeals}/{meals.length} concluídas
+                </AppText>
+              </View>
+              {meals.map((meal) => {
+                const mealLog = getMealLog(dayLog, meal.id);
+                const status = getMealStatus(meal, mealLog);
+                const loggedItems = meal.foods.filter((food) =>
+                  mealLog?.foodLogs.some((item) => item.foodId === food.id),
+                ).length;
+                return (
+                  <MealCard
+                    key={meal.id}
+                    foods={meal.foods}
+                    loggedItems={loggedItems}
+                    meal={meal}
+                    status={
+                      meal.id === nextMeal.id && status === "pending"
+                        ? "partial"
+                        : status
+                    }
+                    onOpen={() =>
+                      router.push(`/(app)/diet/meals/${meal.id}` as Href)
+                    }
+                  />
+                );
+              })}
+            </Animated.View>
+          </>
+        ) : null}
+
+        {activeTab === "plano" ? (
+          <Animated.View entering={FadeInDown.delay(80).duration(400)}>
+            <View
+              style={{
+                alignItems: "center",
+                backgroundColor: "rgba(139,92,246,.08)",
+                borderColor: "rgba(139,92,246,.2)",
+                borderRadius: 14,
+                borderWidth: 1,
+                flexDirection: "row",
+                gap: 10,
+                marginBottom: 16,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+              }}
+            >
+              <Info color="#8B5CF6" size={16} weight="bold" />
+              <AppText className="flex-1 text-[12px] leading-[18px] text-text-muted">
+                Plano alimentar prescrito pelo seu coach. Para ajustes, entre em
+                contato.
+              </AppText>
+            </View>
+            {meals.map((meal) => {
+              const total = meal.foods.reduce(
+                (acc, food) => ({
+                  calories: acc.calories + food.nutrition.calories,
+                  protein: acc.protein + food.nutrition.protein,
+                  carbs: acc.carbs + food.nutrition.carbs,
+                  fat: acc.fat + food.nutrition.fat,
+                }),
+                { calories: 0, protein: 0, carbs: 0, fat: 0 },
+              );
+              return (
+                <Pressable
+                  key={meal.id}
+                  onPress={() =>
+                    router.push(`/(app)/diet/meals/${meal.id}` as Href)
+                  }
+                  style={{
+                    backgroundColor: "#111111",
+                    borderWidth: 1,
+                    borderColor: "#1F1F1F",
+                    borderRadius: 20,
+                    marginBottom: 12,
+                    padding: 16,
+                  }}
+                >
+                  <View
+                    style={{
+                      alignItems: "center",
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      marginBottom: 12,
+                    }}
+                  >
+                    <View>
+                      <AppText className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-text-muted">
+                        {meal.time}
+                      </AppText>
+                      <AppText className="font-heading text-[17px] font-bold text-text-main">
+                        {meal.name}
+                      </AppText>
+                    </View>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <AppText className="text-[16px] font-bold text-brand-secondary">
+                        {Math.round(total.calories)} kcal
+                      </AppText>
+                      <AppText className="text-[10px] text-text-muted">
+                        P{Math.round(total.protein)}·C{Math.round(total.carbs)}
+                        ·G{Math.round(total.fat)}g
+                      </AppText>
+                    </View>
+                  </View>
+                  {meal.foods.map((food) => (
+                    <View
+                      key={food.id}
+                      style={{
+                        alignItems: "center",
+                        borderTopWidth: 1,
+                        borderTopColor: "#1F1F1F",
+                        flexDirection: "row",
+                        gap: 10,
+                        paddingVertical: 9,
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <AppText className="text-[13px] font-semibold text-text-main">
                           {food.name}
                         </AppText>
-                        <AppText className="text-xs text-text-muted">{food.displayQuantity}</AppText>
-                        <AppText
-                          className="text-xs font-bold text-text-muted"
-                          style={{ marginLeft: 10, minWidth: 48, textAlign: 'right' }}
-                        >
+                        {food.isExtra ? (
+                          <View
+                            style={{
+                              alignSelf: "flex-start",
+                              backgroundColor: "rgba(251,191,36,.12)",
+                              borderRadius: 999,
+                              marginTop: 4,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                            }}
+                          >
+                            <AppText className="text-[9px] font-bold text-[#FBBF24]">
+                              EXTRA
+                            </AppText>
+                          </View>
+                        ) : null}
+                        {food.notes ? (
+                          <AppText className="text-[11px] text-text-muted">
+                            {food.notes}
+                          </AppText>
+                        ) : null}
+                      </View>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <AppText className="text-[12px] font-bold text-text-main">
+                          {food.displayQuantity}
+                        </AppText>
+                        <AppText className="text-[10px] text-text-muted">
                           {food.nutrition.calories} kcal
                         </AppText>
                       </View>
-                    ))}
-                    {meal.foods.length > 3 && (
-                      <AppText className="text-xs text-text-muted mt-1.5">
-                        +{meal.foods.length - 3} alimentos
-                      </AppText>
-                    )}
-                  </View>
-                )}
+                    </View>
+                  ))}
+                </Pressable>
+              );
+            })}
+          </Animated.View>
+        ) : null}
+
+        {activeTab === "aderencia" ? (
+          <Animated.View entering={FadeInDown.delay(80).duration(400)}>
+            <View
+              style={{
+                backgroundColor: "#111111",
+                borderWidth: 1,
+                borderColor: "#1F1F1F",
+                borderRadius: 20,
+                marginBottom: 12,
+                padding: 16,
+              }}
+            >
+              <View
+                style={{
+                  alignItems: "baseline",
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  marginBottom: 14,
+                }}
+              >
+                <View>
+                  <AppText className="text-[15px] font-bold text-text-main">
+                    Aderência semanal
+                  </AppText>
+                  <AppText className="text-[11px] text-text-muted">
+                    Semana de 6–12 mai
+                  </AppText>
+                </View>
+                <View
+                  style={{
+                    backgroundColor: "rgba(34,197,94,.12)",
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                  }}
+                >
+                  <AppText className="text-[13px] font-bold text-green-500">
+                    {adherence}% média
+                  </AppText>
+                </View>
               </View>
-            );
-          })}
-        </View>
-      </Animated.View>
-    </AppShell>
+              <View
+                style={{
+                  alignItems: "flex-end",
+                  flexDirection: "row",
+                  gap: 6,
+                  height: 60,
+                }}
+              >
+                {ADHERENCE_DAYS.map((day, index) => {
+                  const val = ADHERENCE_MOCK[index];
+                  const color =
+                    val >= 80 ? "#22C55E" : val >= 60 ? "#F59E0B" : "#FB7185";
+                  return (
+                    <View
+                      key={day}
+                      style={{ alignItems: "center", flex: 1, gap: 5 }}
+                    >
+                      <View
+                        style={{
+                          width: "100%",
+                          minHeight: 4,
+                          height: Math.max(val * 0.5, 4),
+                          borderRadius: 5,
+                          backgroundColor: val > 0 ? color : "#1A1A1A",
+                        }}
+                      />
+                      <AppText className="text-[9px] font-semibold text-text-muted">
+                        {day}
+                      </AppText>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+            {[
+              {
+                lbl: "Refeições no horário",
+                val: "11/18",
+                pct: 61,
+                color: "#F59E0B",
+              },
+              {
+                lbl: "Proteína atingida",
+                val: "3/3 dias",
+                pct: 100,
+                color: "#38BDF8",
+              },
+              {
+                lbl: "Calorias na meta",
+                val: "2/3 dias",
+                pct: 67,
+                color: "#8B5CF6",
+              },
+              {
+                lbl: "Hidratação completa",
+                val: "1/3 dias",
+                pct: 33,
+                color: "#22D3EE",
+              },
+            ].map((item) => (
+              <View
+                key={item.lbl}
+                style={{
+                  backgroundColor: "#111111",
+                  borderWidth: 1,
+                  borderColor: "#1F1F1F",
+                  borderRadius: 14,
+                  marginBottom: 8,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                }}
+              >
+                <View
+                  style={{
+                    alignItems: "center",
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    marginBottom: 8,
+                  }}
+                >
+                  <AppText className="text-[13px] font-semibold text-text-main">
+                    {item.lbl}
+                  </AppText>
+                  <AppText
+                    className="text-[13px] font-bold"
+                    style={{ color: item.color }}
+                  >
+                    {item.val}
+                  </AppText>
+                </View>
+                <View className="h-[5px] overflow-hidden rounded-full bg-bg-elevated">
+                  <View
+                    className="h-full rounded-full"
+                    style={{
+                      backgroundColor: item.color,
+                      width: `${item.pct}%`,
+                    }}
+                  />
+                </View>
+              </View>
+            ))}
+          </Animated.View>
+        ) : null}
+        </ScrollView>
+      </SafeAreaView>
+
+      <NotificationsModal visible={notifVisible} onClose={() => setNotifVisible(false)} />
+    </View>
   );
 }

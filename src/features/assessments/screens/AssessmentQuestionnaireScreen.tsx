@@ -1,14 +1,13 @@
-import { ArrowLeft, Camera, ClipboardText, PaperPlaneTilt } from 'phosphor-react-native';
+import { ArrowLeft, Camera, PaperPlaneTilt } from 'phosphor-react-native';
 import { router, type Href, useLocalSearchParams } from 'expo-router';
-import { Pressable, View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 import { AppScreen } from '@/src/shared/components/ui/AppScreen';
+import { AppButton } from '@/src/shared/components/ui/AppButton';
 import { AppText } from '@/src/shared/components/ui/AppText';
-import { useAppTheme } from '@/src/shared/theme/appTheme';
-import { cn } from '@/src/shared/utils/cn';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
 
 import { AssessmentFieldRenderer } from '../components/AssessmentFieldRenderer';
@@ -17,7 +16,6 @@ import { getQuestionnaireProgress, getRequiredMissing, cleanText } from '../util
 import { getEvaluationById } from '../api/assessments';
 
 export function AssessmentQuestionnaireScreen() {
-  const { isDark } = useAppTheme();
   const { assessmentId } = useLocalSearchParams<{ assessmentId: string }>();
   const { session } = useAuthStore();
   const drafts = useAssessmentsStore((state) => state.drafts);
@@ -47,7 +45,7 @@ export function AssessmentQuestionnaireScreen() {
 
   const draft = drafts[assessment.id] ?? createAssessmentDraft(assessment as any);
   const progress = getQuestionnaireProgress(assessment as any, draft);
-  const missing = getRequiredMissing(assessment as any, draft).length;
+  const missingCount = getRequiredMissing(assessment as any, draft).length;
   const isSubmitted =
     assessment.status === 'analysis' ||
     assessment.status === 'answered' ||
@@ -67,84 +65,137 @@ export function AssessmentQuestionnaireScreen() {
     }
   };
 
+  const nextLabel = hasPhotos
+    ? 'Continuar para fotos'
+    : hasExams
+      ? 'Continuar para exames'
+      : 'Revisar e enviar';
+
+  const NextIcon = hasPhotos ? Camera : PaperPlaneTilt;
+
   return (
-    <AppScreen contentClassName="px-5 pb-12 pt-5" keyboard>
-      {/* Header */}
-      <View className="mb-10 flex-row items-center justify-between">
+    <AppScreen contentClassName="px-6 pb-8 pt-5" keyboard>
+      {/* ── Back bar ── */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 24,
+        }}
+      >
         <Pressable
           accessibilityRole="button"
-          className="h-11 w-11 items-center justify-center rounded-full bg-bg-surface border border-border-subtle"
+          style={{
+            width: 44, height: 44, borderRadius: 99,
+            backgroundColor: '#111111', borderWidth: 1, borderColor: '#222222',
+            alignItems: 'center', justifyContent: 'center',
+          }}
           onPress={() => router.back()}
         >
-          <ArrowLeft color={isDark ? '#FFFFFF' : '#111827'} size={20} weight="bold" />
+          <ArrowLeft color="#FFFFFF" size={20} weight="bold" />
         </Pressable>
-        <AppText className="text-xs font-bold uppercase tracking-[0.2em] text-text-muted">
+        <AppText
+          style={{
+            fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
+            letterSpacing: 3, color: '#555555',
+          }}
+        >
           Questionário
         </AppText>
-        <View className="h-11 w-11" />
+        <View style={{ width: 44 }} />
       </View>
 
-      <Animated.View entering={FadeInDown.duration(420)}>
-        {/* Hero card */}
-        <View className="mb-6 rounded-[28px] border border-border-subtle bg-bg-surface p-5">
-          <View className="mb-4 h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary/10">
-            <ClipboardText color="#A78BFA" size={24} weight="duotone" />
-          </View>
-          <AppText className="text-2xl font-bold leading-tight text-text-main">
-            {assessment.questionnaire.title}
-          </AppText>
-          <AppText className="mt-2 text-sm leading-relaxed text-text-muted">
+      <Animated.View entering={FadeInDown.duration(400)}>
+        {/* ── Editorial heading ── */}
+        <AppText
+          className="font-heading"
+          style={{
+            fontSize: 22,
+            fontWeight: '600',
+            letterSpacing: -0.5,
+            color: '#FFFFFF',
+            marginBottom: 6,
+            lineHeight: 28,
+          }}
+        >
+          {assessment.questionnaire.title}
+        </AppText>
+        {assessment.questionnaire.description ? (
+          <AppText style={{ fontSize: 13, color: '#666666', lineHeight: 18, marginBottom: 20 }}>
             {cleanText(assessment.questionnaire.description)}
           </AppText>
+        ) : (
+          <View style={{ marginBottom: 20 }} />
+        )}
 
-          {/* Progress */}
-          <View className="mt-5">
-            <View className="mb-2 flex-row items-center justify-between">
-              <AppText className="text-[11px] font-bold uppercase tracking-wide text-text-muted">
-                {progress.answered}/{progress.total} respondidas
+        {/* ── Progress strip ── */}
+        <View style={{ marginBottom: 28 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8,
+            }}
+          >
+            <AppText style={{ fontSize: 12, fontWeight: '600', color: '#666666' }}>
+              {progress.answered} de {progress.total} respondidas
+            </AppText>
+            {missingCount > 0 && !isSubmitted ? (
+              <AppText style={{ fontSize: 11, fontWeight: '700', color: '#FBBF24' }}>
+                {missingCount} obrigatória{missingCount > 1 ? 's' : ''} faltando
               </AppText>
-              {missing > 0 && !isSubmitted ? (
-                <AppText className="text-[11px] font-bold text-amber-400">
-                  {missing} obrigatória{missing > 1 ? 's' : ''} faltando
-                </AppText>
-              ) : (
-                <AppText className="text-[11px] font-bold text-brand-secondary">{progress.percent}%</AppText>
-              )}
-            </View>
-            <View className="h-1.5 overflow-hidden rounded-full bg-bg-base">
-              <View className="h-full rounded-full bg-brand-primary" style={{ width: `${progress.percent}%` }} />
-            </View>
+            ) : (
+              <AppText style={{ fontSize: 11, fontWeight: '700', color: '#8B5CF6' }}>
+                {progress.percent}%
+              </AppText>
+            )}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 2 }}>
+            {Array.from({ length: Math.max(progress.total, 1) }).map((_, i) => (
+              <View
+                key={i}
+                style={{
+                  flex: 1,
+                  height: 3,
+                  borderRadius: 99,
+                  backgroundColor: i < progress.answered ? '#8B5CF6' : '#1A1A1A',
+                }}
+              />
+            ))}
           </View>
         </View>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(80).duration(420)} className={cn('gap-3 mb-8', isSubmitted && 'opacity-70')}>
+      {/* ── Fields ── */}
+      <Animated.View
+        entering={FadeInDown.delay(80).duration(400)}
+        style={{ gap: 10, marginBottom: 24, opacity: isSubmitted ? 0.6 : 1 }}
+      >
         {assessment.questionnaire.questions.map((field) => (
           <AssessmentFieldRenderer
             key={field.id}
             field={field as any}
             value={draft.answers[field.id]}
             onChange={(value) => !isSubmitted && setAnswer(assessment.id, field.id, value)}
-            onToggleOption={(option) => !isSubmitted && toggleCheckboxAnswer(assessment.id, field.id, option)}
+            onToggleOption={(option) =>
+              !isSubmitted && toggleCheckboxAnswer(assessment.id, field.id, option)
+            }
           />
         ))}
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(180).duration(420)}>
-        <Pressable
-          accessibilityRole="button"
-          className="min-h-[56px] flex-row items-center justify-center gap-2 rounded-2xl bg-brand-primary"
+      {/* ── CTA ── */}
+      <Animated.View entering={FadeInDown.delay(160).duration(400)}>
+        <AppButton
+          variant="primary"
+          fullWidth
           onPress={handleNext}
+          rightIcon={<NextIcon color="#fff" size={18} weight="bold" />}
         >
-          <AppText className="text-base font-bold text-white">
-            {hasPhotos ? 'Continuar para fotos' : hasExams ? 'Continuar para anexos' : 'Revisar e enviar'}
-          </AppText>
-          {hasPhotos ? (
-            <Camera color="#FFFFFF" size={18} weight="bold" />
-          ) : (
-            <PaperPlaneTilt color="#FFFFFF" size={18} weight="bold" />
-          )}
-        </Pressable>
+          <AppText style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{nextLabel}</AppText>
+        </AppButton>
       </Animated.View>
     </AppScreen>
   );
