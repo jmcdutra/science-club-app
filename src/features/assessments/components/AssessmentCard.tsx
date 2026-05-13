@@ -1,10 +1,10 @@
-import { CaretRight, CheckCircle, Clock, WarningCircle } from 'phosphor-react-native';
+import { CaretRight, CheckCircle, Clock } from 'phosphor-react-native';
 import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/src/shared/components/ui/AppText';
 
 import { Assessment, AssessmentDraft } from '../types';
-import { getAssessmentProgress, getStatusLabel, getStatusTone } from '../utils';
+import { formatAssessmentDate, getAssessmentProgress, getStatusLabel, getStatusTone } from '../utils';
 
 type AssessmentCardProps = {
   assessment: Assessment;
@@ -32,7 +32,10 @@ export function AssessmentCard({ assessment, draft, onPress }: AssessmentCardPro
   /* ── Build meta string ── */
   const metaParts: string[] = [];
   if (assessment.mesocycle) metaParts.push(assessment.mesocycle);
-  if (assessment.due_date) metaParts.push(assessment.due_date);
+  if (assessment.due_date) {
+    const normalizedDate = formatAssessmentDate(assessment.due_date);
+    metaParts.push(isScheduled ? `Libera em ${normalizedDate}` : normalizedDate);
+  }
   if (assessment.professional?.name) metaParts.push(assessment.professional.name);
   const meta = metaParts.join(' · ') || 'Equipe Science Club';
 

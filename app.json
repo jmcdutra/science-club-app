@@ -13,8 +13,13 @@
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "instagram",
+          "instagram-stories",
+          "instagram",
+          "instagram-stories",
+          "instagram",
           "instagram-stories"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.anonymous.scienceclubapp"
     },
@@ -61,6 +66,7 @@
           "cameraPermission": "Permita que o Science Club use a camera para registrar a finalizacao do treino."
         }
       ],
+      "expo-notifications",
       [
         "react-native-share",
         {
@@ -76,7 +82,11 @@
       ]
     ],
     "extra": {
-      "instagramStoriesAppId": "1475005294170350"
+      "instagramStoriesAppId": "1475005294170350",
+      "router": {},
+      "eas": {
+        "projectId": "4fa4f6b7-a30a-474f-9457-919831726f2b"
+      }
     },
     "experiments": {
       "typedRoutes": true,

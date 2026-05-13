@@ -20,6 +20,7 @@ export type EvaluationDTO = {
   title: string;
   category: string;
   due_date: string;
+  release_at?: string | null;
   status: 'scheduled' | 'pending' | 'answered' | 'analysis' | 'done' | 'overdue';
   answers: { question: string; answer: string }[];
   photos: { url: string; position: string; label: string }[];

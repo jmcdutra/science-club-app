@@ -187,6 +187,33 @@ function buildCoachRecommendation(sets: WorkoutSet[]) {
   return `O coach recomendou ${warmups} série de aquecimento, ${preparatory} preparatória${preparatory === 1 ? "" : "s"} e ${valid} válida${valid === 1 ? "" : "s"} na faixa de ${repRange} repetições.`;
 }
 
+function normalizeVideoEmbedUrl(video: WorkoutExerciseVideo) {
+  if (video.embedUrl) return video.embedUrl;
+
+  if (video.provider === "own") return video.url;
+
+  if (video.provider === "youtube") {
+    const match = video.url.match(
+      /(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{6,})/,
+    );
+    return match?.[1] ? `https://www.youtube.com/embed/${match[1]}` : video.url;
+  }
+
+  if (video.provider === "tiktok") {
+    const match = video.url.match(/\/video\/(\d+)/);
+    return match?.[1] ? `https://www.tiktok.com/embed/v2/${match[1]}` : video.url;
+  }
+
+  if (video.provider === "reels") {
+    const match = video.url.match(/instagram\.com\/(?:reel|reels)\/([^/?]+)/);
+    return match?.[1]
+      ? `https://www.instagram.com/reel/${match[1]}/embed`
+      : video.url;
+  }
+
+  return undefined;
+}
+
 const MUSCLE_COLOR: Record<string, string> = {
   Abdomen: "#8B5CF6",
   Core: "#8B5CF6",
@@ -243,8 +270,7 @@ function ExerciseHelpSheet({
   title,
   image,
   exercise,
-  embeddableVideoUrl,
-  externalVideos,
+  helpVideos,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -259,8 +285,12 @@ function ExerciseHelpSheet({
     executionTips?: string[];
     sets: WorkoutSet[];
   };
-  embeddableVideoUrl?: string;
-  externalVideos: { id: string; title: string; url: string }[];
+  helpVideos: {
+    id: string;
+    title: string;
+    url: string;
+    embedUrl?: string;
+  }[];
 }) {
   return (
     <WorkoutNativeBottomSheet
@@ -376,44 +406,50 @@ function ExerciseHelpSheet({
             </View>
           ) : null}
 
-          {embeddableVideoUrl ? (
+          {helpVideos.length > 0 ? (
             <View>
               <AppText className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
                 Vídeo
               </AppText>
-              <View className="h-52 overflow-hidden rounded-[18px] border border-border-subtle bg-black">
-                <WebView
-                  allowsFullscreenVideo
-                  javaScriptEnabled
-                  mediaPlaybackRequiresUserAction={false}
-                  source={{ uri: embeddableVideoUrl }}
-                />
-              </View>
-            </View>
-          ) : null}
-
-          {externalVideos.length > 0 ? (
-            <View>
-              <AppText className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
-                Links
-              </AppText>
-              {externalVideos.map((video, index) => (
-                <Pressable
-                  key={video.id}
-                  className="flex-row items-center justify-between py-3"
-                  onPress={() => Linking.openURL(video.url)}
-                  style={
-                    index < externalVideos.length - 1
-                      ? { borderBottomWidth: 1, borderBottomColor: "#1A1A1A" }
-                      : undefined
+              <View className="gap-3">
+                {helpVideos.map((video) => {
+                  if (video.embedUrl) {
+                    return (
+                      <View
+                        key={video.id}
+                        className="overflow-hidden rounded-[18px] border border-border-subtle bg-black"
+                      >
+                        <View className="border-b border-white/10 px-3 py-2">
+                          <AppText className="text-xs font-semibold text-white/80">
+                            {video.title}
+                          </AppText>
+                        </View>
+                        <View className="h-52">
+                          <WebView
+                            allowsFullscreenVideo
+                            javaScriptEnabled
+                            mediaPlaybackRequiresUserAction={false}
+                            source={{ uri: video.embedUrl }}
+                          />
+                        </View>
+                      </View>
+                    );
                   }
-                >
-                  <AppText className="text-sm font-semibold text-text-main">
-                    {video.title}
-                  </AppText>
-                  <LinkSimple color="#A78BFA" size={15} weight="bold" />
-                </Pressable>
-              ))}
+
+                  return (
+                    <Pressable
+                      key={video.id}
+                      className="flex-row items-center justify-between rounded-[14px] border border-border-subtle px-4 py-3"
+                      onPress={() => Linking.openURL(video.url)}
+                    >
+                      <AppText className="text-sm font-semibold text-text-main">
+                        {video.title}
+                      </AppText>
+                      <LinkSimple color="#A78BFA" size={15} weight="bold" />
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
           ) : null}
         </ScrollView>
@@ -784,7 +820,10 @@ export function WorkoutSessionScreen() {
     item: (typeof sessionExercises)[number],
   ): WorkoutSet[] => setsByExercise[item.id] ?? item.sets;
   const activeExerciseSets = getExerciseSets(exercise);
-  const exerciseVideos: WorkoutExerciseVideo[] = localExercise?.videos ?? [];
+  const exerciseVideos: WorkoutExerciseVideo[] =
+    (exercise as any)?.videos?.length
+      ? ((exercise as any).videos as WorkoutExerciseVideo[])
+      : localExercise?.videos ?? [];
   const exerciseDescription =
     exercise.description ?? localExercise?.description;
   const exerciseExecutionTips =
@@ -802,12 +841,12 @@ export function WorkoutSessionScreen() {
     const weight = previousWeight + Math.max(0, index - 1) * 5;
     return `${weight}kg`;
   }
-  const embeddableVideo = exerciseVideos.find(
-    (v) => v.embedUrl && (v.provider === "own" || v.provider === "youtube"),
-  );
-  const externalVideos = exerciseVideos.filter(
-    (v) => v.provider === "reels" || v.provider === "tiktok" || !v.embedUrl,
-  );
+  const helpVideos = exerciseVideos.map((video) => ({
+    id: video.id,
+    title: video.title,
+    url: video.url,
+    embedUrl: normalizeVideoEmbedUrl(video),
+  }));
   const completedSets = completedByExercise[exercise.id] ?? 0;
   const restRunning = restLeft > 0;
   const totalSets = sessionExercises.reduce(
@@ -1621,17 +1660,12 @@ export function WorkoutSessionScreen() {
       </SafeAreaView>
 
       <ExerciseHelpSheet
-        embeddableVideoUrl={embeddableVideo?.embedUrl}
         exercise={{
           ...exercise,
           description: exerciseDescription,
           executionTips: exerciseExecutionTips,
         }}
-        externalVideos={externalVideos.map((video: WorkoutExerciseVideo) => ({
-          id: video.id,
-          title: video.title,
-          url: video.url,
-        }))}
+        helpVideos={helpVideos}
         image={sessionImage}
         onClose={() => setHelpOpen(false)}
         title={sessionDisplayTitle}

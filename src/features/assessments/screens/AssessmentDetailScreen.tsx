@@ -31,6 +31,7 @@ import {
   getStatusLabel,
   getStatusTone,
   cleanText,
+  formatAssessmentDate,
 } from '../utils';
 
 /* ─── Task Row ───────────────────────────────────────────────────────────── */
@@ -181,7 +182,7 @@ export function AssessmentDetailScreen() {
 
   const meta = [
     assessment.professional?.name || 'Equipe Science Club',
-    assessment.due_date && `Prazo: ${assessment.due_date}`,
+    assessment.due_date && `${isScheduled ? 'Liberação' : 'Prazo'}: ${formatAssessmentDate(assessment.due_date)}`,
   ]
     .filter(Boolean)
     .join(' · ');

@@ -93,3 +93,10 @@ export function cleanText(text: string) {
   // Remove tudo que vem depois de * ou # (IDs técnicos)
   return text.split(/[#*]/)[0].trim();
 }
+
+export function formatAssessmentDate(dateValue?: string) {
+  if (!dateValue) return '';
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return dateValue;
+  return date.toLocaleDateString('pt-BR');
+}

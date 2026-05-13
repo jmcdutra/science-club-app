@@ -10,6 +10,13 @@ export type WorkoutExerciseDTO = {
   cue: string;
   description?: string;
   executionTips?: string[];
+  videos?: {
+    id: string;
+    title: string;
+    provider: 'own' | 'youtube' | 'reels' | 'tiktok';
+    url: string;
+    embedUrl?: string;
+  }[];
   previous: string;
   sets: WorkoutSetDTO[];
 };
