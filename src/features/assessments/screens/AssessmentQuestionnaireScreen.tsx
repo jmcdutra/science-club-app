@@ -1,5 +1,5 @@
 import { ArrowLeft, Camera, PaperPlaneTilt } from 'phosphor-react-native';
-import { router, type Href, useLocalSearchParams } from 'expo-router';
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
@@ -9,6 +9,7 @@ import { AppScreen } from '@/src/shared/components/ui/AppScreen';
 import { AppButton } from '@/src/shared/components/ui/AppButton';
 import { AppText } from '@/src/shared/components/ui/AppText';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
+import { useRefetchOnFocus } from '@/src/shared/hooks/useRefetchOnFocus';
 
 import { AssessmentFieldRenderer } from '../components/AssessmentFieldRenderer';
 import { createAssessmentDraft, useAssessmentsStore } from '../services/assessments.store';
@@ -16,6 +17,7 @@ import { getQuestionnaireProgress, getRequiredMissing, cleanText } from '../util
 import { getEvaluationById } from '../api/assessments';
 
 export function AssessmentQuestionnaireScreen() {
+  const router = useRouter();
   const { assessmentId } = useLocalSearchParams<{ assessmentId: string }>();
   const { session } = useAuthStore();
   const drafts = useAssessmentsStore((state) => state.drafts);
@@ -23,11 +25,12 @@ export function AssessmentQuestionnaireScreen() {
   const toggleCheckboxAnswer = useAssessmentsStore((state) => state.toggleCheckboxAnswer);
   const initializeDraft = useAssessmentsStore((state) => state.initializeDraft);
 
-  const { data: assessment, isLoading } = useQuery({
+  const { data: assessment, isLoading, refetch } = useQuery({
     queryKey: ['assessment', assessmentId],
     queryFn: () => getEvaluationById(session?.token!, assessmentId!),
     enabled: !!session?.token && !!assessmentId,
   });
+  useRefetchOnFocus(refetch, Boolean(session?.token && assessmentId));
 
   useEffect(() => {
     if (assessment) {

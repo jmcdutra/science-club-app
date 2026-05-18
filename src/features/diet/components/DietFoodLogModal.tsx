@@ -320,6 +320,9 @@ export function DietFoodLogModal({
       await queryClient.invalidateQueries({
         queryKey: ["student-diet-current"],
       });
+      await queryClient.invalidateQueries({
+        queryKey: ["student-diet-adherence"],
+      });
     },
   });
 

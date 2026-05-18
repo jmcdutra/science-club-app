@@ -8,18 +8,17 @@ import {
   Star,
   Tote,
   User,
-} from "phosphor-react-native";
-import { router } from "expo-router";
-import { Alert, Pressable, ScrollView, Switch, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Animated, { FadeInDown } from "react-native-reanimated";
+} from 'phosphor-react-native';
+import { router } from 'expo-router';
+import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { useQuery } from '@tanstack/react-query';
 
-import { useAuthStore } from "@/src/features/auth/services/auth.store";
-import { AppText } from "@/src/shared/components/ui/AppText";
-import { useAppTheme } from "@/src/shared/theme/appTheme";
-import { useProfileStore } from "../services/profile.store";
-
-/* ─── Components ─────────────────────────────────────────────────────────── */
+import { useAuthStore } from '@/src/features/auth/services/auth.store';
+import { AppText } from '@/src/shared/components/ui/AppText';
+import { useAppTheme } from '@/src/shared/theme/appTheme';
+import { STUDENT_PROFILE_QUERY_KEY, getStudentProfile } from '../api/profile';
 
 function SectionLabel({ children }: { children: string }) {
   const { isDark } = useAppTheme();
@@ -27,8 +26,8 @@ function SectionLabel({ children }: { children: string }) {
     <AppText
       style={{
         fontSize: 11,
-        fontWeight: "700",
-        color: isDark ? "#666666" : "#94A3B8",
+        fontWeight: '700',
+        color: isDark ? '#666666' : '#94A3B8',
         letterSpacing: 1.5,
         marginBottom: 12,
         marginLeft: 8,
@@ -44,11 +43,11 @@ function SectionContainer({ children }: { children: React.ReactNode }) {
   return (
     <View
       style={{
-        backgroundColor: isDark ? "#111111" : "#F9FAFB",
+        backgroundColor: isDark ? '#111111' : '#F9FAFB',
         borderRadius: 24,
         borderWidth: 1,
-        borderColor: isDark ? "#222222" : "#E5E7EB",
-        overflow: "hidden",
+        borderColor: isDark ? '#222222' : '#E5E7EB',
+        overflow: 'hidden',
         marginBottom: 32,
       }}
     >
@@ -80,8 +79,8 @@ function RowItem({
       <Pressable
         onPress={onPress}
         style={{
-          flexDirection: "row",
-          alignItems: "center",
+          flexDirection: 'row',
+          alignItems: 'center',
           padding: 16,
         }}
       >
@@ -91,8 +90,8 @@ function RowItem({
             height: 40,
             borderRadius: 12,
             backgroundColor: iconBg,
-            alignItems: "center",
-            justifyContent: "center",
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
           {icon}
@@ -101,8 +100,8 @@ function RowItem({
           <AppText
             style={{
               fontSize: 15,
-              fontWeight: "600",
-              color: isDark ? "#FFFFFF" : "#111827",
+              fontWeight: '600',
+              color: isDark ? '#FFFFFF' : '#111827',
             }}
           >
             {title}
@@ -110,7 +109,7 @@ function RowItem({
           <AppText
             style={{
               fontSize: 13,
-              color: isDark ? "#888888" : "#6B7280",
+              color: isDark ? '#888888' : '#6B7280',
               marginTop: 2,
             }}
           >
@@ -122,99 +121,114 @@ function RowItem({
         ) : (
           <CaretRight
             size={16}
-            color={isDark ? "#444444" : "#94A3B8"}
+            color={isDark ? '#444444' : '#94A3B8'}
             weight="bold"
           />
         )}
       </Pressable>
-      {showDivider && (
+      {showDivider ? (
         <View
           style={{
             height: 1,
-            backgroundColor: isDark ? "#222222" : "#E5E7EB",
+            backgroundColor: isDark ? '#222222' : '#E5E7EB',
             marginLeft: 70,
           }}
         />
-      )}
+      ) : null}
     </>
   );
 }
 
-/* ─── Screen ─────────────────────────────────────────────────────────────── */
-
 export function ProfileDashboardScreen() {
   const { isDark } = useAppTheme();
-  const profile = useProfileStore((state) => state.profile);
-  const clearSession = useAuthStore((state) => state.clearSession);
+  const { session, clearSession } = useAuthStore();
+  const { data: profile, isLoading } = useQuery({
+    queryKey: STUDENT_PROFILE_QUERY_KEY,
+    queryFn: () => getStudentProfile(session?.token!),
+    enabled: !!session?.token,
+  });
 
   const handleSignOut = () => {
-    Alert.alert("Sair da conta", "Deseja encerrar sua sessão neste aparelho?", [
-      { text: "Cancelar", style: "cancel" },
+    Alert.alert('Sair da conta', 'Deseja encerrar sua sessão neste aparelho?', [
+      { text: 'Cancelar', style: 'cancel' },
       {
-        text: "Sair",
-        style: "destructive",
+        text: 'Sair',
+        style: 'destructive',
         onPress: async () => {
           await clearSession();
-          router.replace("/(public)/login");
+          router.replace('/(public)/login');
         },
       },
     ]);
   };
 
+  if (isLoading || !profile) {
+    return (
+      <View style={{ flex: 1, backgroundColor: isDark ? '#000000' : '#FFFFFF' }}>
+        <SafeAreaView style={{ flex: 1 }}>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator color="#8B5CF6" />
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
   const initials = profile.name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
     .substring(0, 2)
     .toUpperCase();
+  const activeNotifications = [
+    profile.preferences.workoutReminders,
+    profile.preferences.mealReminders,
+    profile.preferences.assessmentAlerts,
+  ].filter(Boolean).length;
 
   return (
-    <View style={{ flex: 1, backgroundColor: isDark ? "#000000" : "#FFFFFF" }}>
-      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+    <View style={{ flex: 1, backgroundColor: isDark ? '#000000' : '#FFFFFF' }}>
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         <ScrollView
           showsVerticalScrollIndicator={false}
           bounces
           contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 120, paddingTop: 20 }}
         >
-          {/* Top Card */}
           <Animated.View entering={FadeInDown.delay(100).duration(500)}>
             <View
               style={{
-                backgroundColor: isDark ? "#111111" : "#F9FAFB",
+                backgroundColor: isDark ? '#111111' : '#F9FAFB',
                 borderRadius: 24,
                 borderWidth: 1,
-                borderColor: isDark ? "#222222" : "#E5E7EB",
-                overflow: "hidden",
+                borderColor: isDark ? '#222222' : '#E5E7EB',
+                overflow: 'hidden',
                 marginBottom: 32,
               }}
             >
-              {/* Subtle ambient light */}
               <View
                 pointerEvents="none"
                 style={{
-                  position: "absolute",
+                  position: 'absolute',
                   top: -60,
                   left: 20,
                   width: 140,
                   height: 140,
                   borderRadius: 70,
-                  backgroundColor: "rgba(139,92,246,0.15)",
+                  backgroundColor: 'rgba(139,92,246,0.15)',
                   transform: [{ scale: 1.5 }],
                 }}
               />
 
-              <View style={{ padding: 32, alignItems: "center" }}>
+              <View style={{ padding: 32, alignItems: 'center' }}>
                 <Pressable
-                  onPress={() =>
-                    Alert.alert("Avatar", "Em breve: Alterar foto de perfil")
-                  }
+                  onPress={() => Alert.alert('Avatar', 'Em breve: alterar foto de perfil.')}
                   style={{
                     width: 80,
                     height: 80,
                     borderRadius: 99,
-                    backgroundColor: "#8B5CF6",
-                    alignItems: "center",
-                    justifyContent: "center",
+                    backgroundColor: '#8B5CF6',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     marginBottom: 16,
                   }}
                 >
@@ -222,29 +236,27 @@ export function ProfileDashboardScreen() {
                     className="font-heading"
                     style={{
                       fontSize: 28,
-                      fontWeight: "700",
-                      color: isDark ? "#FFFFFF" : "#111827",
+                      fontWeight: '700',
+                      color: '#FFFFFF',
                     }}
                   >
                     {initials}
                   </AppText>
-
-                  {/* Camera overlay */}
                   <View
                     style={{
-                      position: "absolute",
+                      position: 'absolute',
                       bottom: 0,
                       right: -4,
-                      backgroundColor: isDark ? "#111111" : "#F9FAFB",
+                      backgroundColor: isDark ? '#111111' : '#F9FAFB',
                       borderRadius: 99,
                       padding: 4,
                       borderWidth: 2,
-                      borderColor: isDark ? "#111111" : "#F9FAFB",
+                      borderColor: isDark ? '#111111' : '#F9FAFB',
                     }}
                   >
                     <Camera
                       size={14}
-                      color={isDark ? "#FFFFFF" : "#111827"}
+                      color={isDark ? '#FFFFFF' : '#111827'}
                       weight="fill"
                     />
                   </View>
@@ -254,8 +266,8 @@ export function ProfileDashboardScreen() {
                   className="font-heading"
                   style={{
                     fontSize: 22,
-                    fontWeight: "700",
-                    color: isDark ? "#FFFFFF" : "#111827",
+                    fontWeight: '700',
+                    color: isDark ? '#FFFFFF' : '#111827',
                     marginBottom: 4,
                   }}
                 >
@@ -264,39 +276,37 @@ export function ProfileDashboardScreen() {
                 <AppText
                   style={{
                     fontSize: 14,
-                    color: isDark ? "#888888" : "#6B7280",
+                    color: isDark ? '#888888' : '#6B7280',
                   }}
                 >
                   {profile.email}
                 </AppText>
               </View>
 
-              {/* Stats Divider */}
               <View
                 style={{
                   height: 1,
-                  backgroundColor: isDark ? "#222222" : "#E5E7EB",
+                  backgroundColor: isDark ? '#222222' : '#E5E7EB',
                   marginHorizontal: 24,
                 }}
               />
 
-              {/* Stats Bottom Area */}
               <View
                 style={{
-                  flexDirection: "row",
+                  flexDirection: 'row',
                   paddingVertical: 20,
                   paddingHorizontal: 24,
-                  justifyContent: "space-between",
-                  alignItems: "center",
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
                 }}
               >
-                <View style={{ alignItems: "center", flex: 1 }}>
+                <View style={{ alignItems: 'center', flex: 1 }}>
                   <AppText
                     className="font-heading"
                     style={{
                       fontSize: 20,
-                      fontWeight: "700",
-                      color: isDark ? "#FFFFFF" : "#111827",
+                      fontWeight: '700',
+                      color: isDark ? '#FFFFFF' : '#111827',
                     }}
                   >
                     {profile.metrics.workoutsDone}
@@ -304,8 +314,8 @@ export function ProfileDashboardScreen() {
                   <AppText
                     style={{
                       fontSize: 10,
-                      fontWeight: "600",
-                      color: isDark ? "#666666" : "#94A3B8",
+                      fontWeight: '600',
+                      color: isDark ? '#666666' : '#94A3B8',
                       letterSpacing: 1,
                       marginTop: 4,
                     }}
@@ -318,26 +328,26 @@ export function ProfileDashboardScreen() {
                   style={{
                     width: 1,
                     height: 32,
-                    backgroundColor: isDark ? "#222222" : "#E5E7EB",
+                    backgroundColor: isDark ? '#222222' : '#E5E7EB',
                   }}
                 />
 
-                <View style={{ alignItems: "center", flex: 1 }}>
+                <View style={{ alignItems: 'center', flex: 1 }}>
                   <AppText
                     className="font-heading"
                     style={{
                       fontSize: 20,
-                      fontWeight: "700",
-                      color: isDark ? "#FFFFFF" : "#111827",
+                      fontWeight: '700',
+                      color: isDark ? '#FFFFFF' : '#111827',
                     }}
                   >
-                    28
+                    {profile.metrics.weeksActive}
                   </AppText>
                   <AppText
                     style={{
                       fontSize: 10,
-                      fontWeight: "600",
-                      color: isDark ? "#666666" : "#94A3B8",
+                      fontWeight: '600',
+                      color: isDark ? '#666666' : '#94A3B8',
                       letterSpacing: 1,
                       marginTop: 4,
                     }}
@@ -350,17 +360,17 @@ export function ProfileDashboardScreen() {
                   style={{
                     width: 1,
                     height: 32,
-                    backgroundColor: isDark ? "#222222" : "#E5E7EB",
+                    backgroundColor: isDark ? '#222222' : '#E5E7EB',
                   }}
                 />
 
-                <View style={{ alignItems: "center", flex: 1 }}>
+                <View style={{ alignItems: 'center', flex: 1 }}>
                   <AppText
                     className="font-heading"
                     style={{
                       fontSize: 20,
-                      fontWeight: "700",
-                      color: isDark ? "#FFFFFF" : "#111827",
+                      fontWeight: '700',
+                      color: isDark ? '#FFFFFF' : '#111827',
                     }}
                   >
                     {profile.metrics.adherence}%
@@ -368,8 +378,8 @@ export function ProfileDashboardScreen() {
                   <AppText
                     style={{
                       fontSize: 10,
-                      fontWeight: "600",
-                      color: isDark ? "#666666" : "#94A3B8",
+                      fontWeight: '600',
+                      color: isDark ? '#666666' : '#94A3B8',
                       letterSpacing: 1,
                       marginTop: 4,
                     }}
@@ -381,7 +391,6 @@ export function ProfileDashboardScreen() {
             </View>
           </Animated.View>
 
-          {/* CONTA */}
           <Animated.View entering={FadeInDown.delay(150).duration(500)}>
             <SectionLabel>CONTA</SectionLabel>
             <SectionContainer>
@@ -389,32 +398,31 @@ export function ProfileDashboardScreen() {
                 icon={<User size={20} color="#A78BFA" weight="fill" />}
                 iconBg="rgba(139,92,246,0.12)"
                 title="Dados pessoais"
-                subtitle="Nome, CPF, telefone"
-                onPress={() =>
-                  router.push("/(app)/profile/edit-contact" as any)
-                }
+                subtitle="Telefone, WhatsApp e CPF"
+                onPress={() => router.push('/(app)/profile/edit-contact' as any)}
               />
               <RowItem
                 icon={<Info size={20} color="#38BDF8" weight="fill" />}
                 iconBg="rgba(14,165,233,0.12)"
                 title="Meus documentos"
-                subtitle="Contratos, exames e termos"
-                onPress={() => router.push("/(app)/profile/documents" as any)}
+                subtitle="Nenhum documento encontrado"
+                onPress={() => router.push('/(app)/profile/documents' as any)}
               />
               <RowItem
                 icon={<Tote size={20} color="#FBBF24" weight="fill" />}
                 iconBg="rgba(234,179,8,0.12)"
                 title="Medidas corporais"
-                subtitle="Peso, altura, biometria"
-                showDivider={false}
-                onPress={() =>
-                  router.push("/(app)/profile/measurements" as any)
+                subtitle={
+                  profile.body?.updatedAt
+                    ? 'Atualize e acompanhe seu histórico'
+                    : 'Adicione sua primeira atualização'
                 }
+                showDivider={false}
+                onPress={() => router.push('/(app)/profile/measurements' as any)}
               />
             </SectionContainer>
           </Animated.View>
 
-          {/* PREFERÊNCIAS */}
           <Animated.View entering={FadeInDown.delay(200).duration(500)}>
             <SectionLabel>PREFERÊNCIAS</SectionLabel>
             <SectionContainer>
@@ -422,32 +430,24 @@ export function ProfileDashboardScreen() {
                 icon={<Bell size={20} color="#FBBF24" weight="fill" />}
                 iconBg="rgba(234,179,8,0.12)"
                 title="Notificações"
-                subtitle="Ativadas"
-                onPress={() => router.push("/(app)/profile/preferences" as any)}
-                trailing={
-                  <Switch
-                    value={true}
-                    onValueChange={() => {}}
-                    trackColor={{ false: "#222222", true: "#8B5CF6" }}
-                    thumbColor={"#FFFFFF"}
-                    ios_backgroundColor="#222222"
-                  />
+                subtitle={
+                  activeNotifications > 0
+                    ? `${activeNotifications} lembretes ativos`
+                    : 'Nenhum lembrete ativo'
                 }
+                onPress={() => router.push('/(app)/profile/preferences' as any)}
               />
               <RowItem
                 icon={<Gear size={20} color="#A78BFA" weight="fill" />}
                 iconBg="rgba(139,92,246,0.12)"
                 title="Configurações do App"
-                subtitle="Tema, idioma e cache"
+                subtitle="Tema, cache e modo offline"
                 showDivider={false}
-                onPress={() =>
-                  router.push("/(app)/profile/app-settings" as any)
-                }
+                onPress={() => router.push('/(app)/profile/app-settings' as any)}
               />
             </SectionContainer>
           </Animated.View>
 
-          {/* SUPORTE */}
           <Animated.View entering={FadeInDown.delay(250).duration(500)}>
             <SectionLabel>SUPORTE</SectionLabel>
             <SectionContainer>
@@ -455,8 +455,8 @@ export function ProfileDashboardScreen() {
                 icon={<Info size={20} color="#38BDF8" weight="fill" />}
                 iconBg="rgba(14,165,233,0.12)"
                 title="Sobre o app"
-                subtitle="v2.4.1 — Science Club"
-                onPress={() => router.push("/(app)/profile/about" as any)}
+                subtitle="v1.0.0 — Science Club"
+                onPress={() => router.push('/(app)/profile/about' as any)}
               />
               <RowItem
                 icon={<Star size={20} color="#FBBF24" weight="fill" />}
@@ -466,27 +466,26 @@ export function ProfileDashboardScreen() {
                 showDivider={false}
                 onPress={() =>
                   Alert.alert(
-                    "Em breve",
-                    "A avaliação nas lojas de aplicativos estará disponível na versão final.",
+                    'Em breve',
+                    'A avaliação nas lojas de aplicativos estará disponível na versão final.',
                   )
                 }
               />
             </SectionContainer>
           </Animated.View>
 
-          {/* Sair Button */}
           <Animated.View entering={FadeInDown.delay(300).duration(500)}>
             <Pressable
               onPress={handleSignOut}
               style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
                 paddingVertical: 18,
                 borderRadius: 24,
                 borderWidth: 1,
-                borderColor: "rgba(239,68,68,0.2)",
-                backgroundColor: "rgba(239,68,68,0.05)",
+                borderColor: 'rgba(239,68,68,0.2)',
+                backgroundColor: 'rgba(239,68,68,0.05)',
                 marginTop: 8,
               }}
             >
@@ -494,8 +493,8 @@ export function ProfileDashboardScreen() {
               <AppText
                 style={{
                   fontSize: 15,
-                  fontWeight: "600",
-                  color: "#EF4444",
+                  fontWeight: '600',
+                  color: '#EF4444',
                   marginLeft: 8,
                 }}
               >
@@ -506,12 +505,12 @@ export function ProfileDashboardScreen() {
             <AppText
               style={{
                 fontSize: 12,
-                color: "#444444",
-                textAlign: "center",
+                color: '#444444',
+                textAlign: 'center',
                 marginTop: 32,
               }}
             >
-              Science Fitness v2.4.1
+              Science Club v1.0.0
             </AppText>
           </Animated.View>
         </ScrollView>

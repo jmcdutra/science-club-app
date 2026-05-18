@@ -1,32 +1,35 @@
 import { ArrowLeft, CheckCircle, FileText, PaperPlaneTilt, Trash, UploadSimple } from 'phosphor-react-native';
-import { router, type Href, useLocalSearchParams } from 'expo-router';
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Alert, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 
 import { AppScreen } from '@/src/shared/components/ui/AppScreen';
 import { AppButton } from '@/src/shared/components/ui/AppButton';
 import { AppText } from '@/src/shared/components/ui/AppText';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
+import { useRefetchOnFocus } from '@/src/shared/hooks/useRefetchOnFocus';
 
 import { createAssessmentDraft, useAssessmentsStore } from '../services/assessments.store';
 import { getExamProgress } from '../utils';
 import { getEvaluationById } from '../api/assessments';
 
 export function AssessmentExamsScreen() {
+  const router = useRouter();
   const { assessmentId } = useLocalSearchParams<{ assessmentId: string }>();
   const { session } = useAuthStore();
   const drafts = useAssessmentsStore((state) => state.drafts);
   const setExam = useAssessmentsStore((state) => state.setExam);
   const initializeDraft = useAssessmentsStore((state) => state.initializeDraft);
 
-  const { data: assessment, isLoading } = useQuery({
+  const { data: assessment, isLoading, refetch } = useQuery({
     queryKey: ['assessment', assessmentId],
     queryFn: () => getEvaluationById(session?.token!, assessmentId!),
     enabled: !!session?.token && !!assessmentId,
   });
+  useRefetchOnFocus(refetch, Boolean(session?.token && assessmentId));
 
   useEffect(() => {
     if (assessment) {
@@ -44,6 +47,7 @@ export function AssessmentExamsScreen() {
 
   const draft = drafts[assessment.id] ?? createAssessmentDraft(assessment as any);
   const progress = getExamProgress(assessment as any, draft);
+  const currentAssessmentId = assessment.id;
   const isSubmitted =
     assessment.status === 'analysis' ||
     assessment.status === 'answered' ||
@@ -52,19 +56,29 @@ export function AssessmentExamsScreen() {
 
   async function handlePickFile(examId: string) {
     if (isSubmitted) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permissão necessária', 'Autorize o acesso à galeria nas configurações.');
+    const result = await DocumentPicker.getDocumentAsync({
+      type: [
+        'image/*',
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      ],
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (result.canceled || !result.assets.length) return;
+
+    const file = result.assets[0];
+    if (!file.uri) {
+      Alert.alert('Arquivo inválido', 'Não foi possível ler o arquivo selecionado.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: false,
-      quality: 0.88,
+
+    setExam(currentAssessmentId, examId, {
+      uri: file.uri,
+      name: file.name,
+      mimeType: file.mimeType || undefined,
     });
-    if (!result.canceled) {
-      setExam(assessment.id, examId, result.assets[0].uri);
-    }
   }
 
   return (
@@ -116,7 +130,7 @@ export function AssessmentExamsScreen() {
           Exames e anexos
         </AppText>
         <AppText style={{ fontSize: 13, color: '#666666', lineHeight: 18, marginBottom: 20 }}>
-          Selecione fotos dos seus exames ou documentos. Ficam salvos no rascunho até o envio.
+          Selecione imagens ou documentos dos seus exames. Eles ficam salvos no rascunho até o envio.
         </AppText>
 
         {/* ── Progress strip ── */}
@@ -155,6 +169,11 @@ export function AssessmentExamsScreen() {
           {assessment.questionnaire.attachment_questions.map((exam: any, index: number) => {
             const examId = exam.id || exam._id;
             const attached = Boolean(draft.exams[examId]);
+            const attachment = draft.exams[examId];
+            const attachmentName =
+              typeof attachment === 'string'
+                ? attachment.split('/').pop()
+                : attachment?.name;
 
             return (
               <Animated.View
@@ -208,6 +227,11 @@ export function AssessmentExamsScreen() {
                     {exam.description ? (
                       <AppText style={{ fontSize: 11, color: '#666666', lineHeight: 15 }}>
                         {exam.description}
+                      </AppText>
+                    ) : null}
+                    {attachmentName ? (
+                      <AppText style={{ fontSize: 11, color: '#34D399', lineHeight: 15, marginTop: 6 }}>
+                        {attachmentName}
                       </AppText>
                     ) : null}
                   </View>

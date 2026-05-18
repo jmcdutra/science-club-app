@@ -61,11 +61,16 @@ export async function submitEvaluation(token: string, id: string, data: Partial<
   });
 }
 
-export async function uploadFile(token: string, uri: string, folder: string = 'general') {
+export async function uploadFile(
+  token: string,
+  uri: string,
+  folder: string = 'general',
+  fileMeta?: { name?: string; mimeType?: string },
+) {
   const formData = new FormData();
-  const filename = uri.split('/').pop() || 'upload.jpg';
+  const filename = fileMeta?.name || uri.split('/').pop() || 'upload.jpg';
   const match = /\.(\w+)$/.exec(filename);
-  const type = match ? `image/${match[1]}` : 'image';
+  const type = fileMeta?.mimeType || (match ? `image/${match[1]}` : 'application/octet-stream');
 
   formData.append('file', {
     uri,

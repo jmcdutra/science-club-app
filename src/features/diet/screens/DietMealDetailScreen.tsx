@@ -25,7 +25,13 @@ import { WorkoutNativeBottomSheet } from "@/src/features/workouts/components/Wor
 import { DietFoodLogModal } from "../components/DietFoodLogModal";
 
 import { useDietStore, useSelectedDietDay } from "../services/diet.store";
-import { consumeDietMeal, getCurrentDiet, skipDietMeal } from "../api/diet";
+import {
+  consumeDietMeal,
+  getCurrentDiet,
+  saveDietMealPhoto,
+  skipDietMeal,
+  uploadDietMealPhoto,
+} from "../api/diet";
 import type { DietFood } from "../types";
 import {
   getFoodLog,
@@ -435,14 +441,18 @@ export function DietMealDetailScreen() {
   const consumeMutation = useMutation({
     mutationFn: (targetMealId: string) =>
       consumeDietMeal(session?.token!, targetMealId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["student-diet-current"] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["student-diet-current"] });
+      await queryClient.invalidateQueries({ queryKey: ["student-diet-adherence"] });
+    },
   });
   const skipMutation = useMutation({
     mutationFn: (targetMealId: string) =>
       skipDietMeal(session?.token!, targetMealId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["student-diet-current"] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["student-diet-current"] });
+      await queryClient.invalidateQueries({ queryKey: ["student-diet-adherence"] });
+    },
   });
 
   const baseMeal =
@@ -466,6 +476,19 @@ export function DietMealDetailScreen() {
   const mealPhotoUri = mealLog?.photoUri;
   const mealPhotoName = mealLog?.photoName;
 
+  async function persistMealPhotoIfNeeded() {
+    if (!session?.token || !mealPhotoUri) return;
+
+    const uploadResult = await uploadDietMealPhoto(session.token, mealPhotoUri, {
+      name: mealPhotoName,
+    });
+
+    await saveDietMealPhoto(session.token, meal.id, {
+      photoUrl: uploadResult.url,
+      photoName: mealPhotoName,
+    });
+  }
+
   async function chooseMealPhoto() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return;
@@ -485,6 +508,7 @@ export function DietMealDetailScreen() {
   }
 
   const handleMarkAll = async () => {
+    await persistMealPhotoIfNeeded();
     if (extraFoods.length > 0) {
       markMealConsumedLocal(meal.id);
     } else {
@@ -699,7 +723,7 @@ export function DietMealDetailScreen() {
             );
           })}
 
-          <Pressable
+          {/* <Pressable
             className="mt-2 items-center justify-center rounded-xl border border-dashed border-border-subtle px-3 py-3"
             onPress={() => setShowAddFood(true)}
           >
@@ -709,7 +733,7 @@ export function DietMealDetailScreen() {
                 Adicionar alimento
               </AppText>
             </View>
-          </Pressable>
+          </Pressable> */}
         </Animated.View>
       </View>
 

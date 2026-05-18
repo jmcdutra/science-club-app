@@ -11,7 +11,7 @@ import { cn } from '@/src/shared/utils/cn';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
 
 import { WorkoutExerciseListItem } from '../components/WorkoutExerciseListItem';
-import { getTotalSets, getWorkoutSession, getWorkoutSheet } from '../data/workoutSheets';
+import { getTotalSets, getWorkoutSession, getWorkoutSheet, workoutSheets } from '../data/workoutSheets';
 import { getCurrentWorkout } from '../api/workouts';
 
 const MUSCLE_COLOR: Record<string, string> = {
@@ -34,7 +34,9 @@ export function WorkoutSheetDetailScreen() {
     enabled: !!authSession?.token,
   });
   const remoteSheet = data?.workout && data.workout.id === id ? data.workout : null;
-  const sheet = remoteSheet || getWorkoutSheet(id);
+  const hasLocalFallback = workoutSheets.some((item) => item.id === id);
+  const sheet = remoteSheet || (hasLocalFallback ? getWorkoutSheet(id) : null);
+  if (!sheet) return null;
   const session = remoteSheet
     ? (sheet.sessions.find((s) => s.id === sessionId) || sheet.sessions[0])
     : getWorkoutSession(id, sessionId);

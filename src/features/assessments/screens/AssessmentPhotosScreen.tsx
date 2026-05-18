@@ -1,5 +1,5 @@
 import { ArrowLeft, Camera, CheckCircle, Flask, Image, PaperPlaneTilt } from 'phosphor-react-native';
-import { router, type Href, useLocalSearchParams } from 'expo-router';
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Alert, Image as RNImage, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
@@ -10,23 +10,26 @@ import { AppScreen } from '@/src/shared/components/ui/AppScreen';
 import { AppButton } from '@/src/shared/components/ui/AppButton';
 import { AppText } from '@/src/shared/components/ui/AppText';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
+import { useRefetchOnFocus } from '@/src/shared/hooks/useRefetchOnFocus';
 
 import { createAssessmentDraft, useAssessmentsStore } from '../services/assessments.store';
 import { getPhotoProgress } from '../utils';
 import { getEvaluationById } from '../api/assessments';
 
 export function AssessmentPhotosScreen() {
+  const router = useRouter();
   const { assessmentId } = useLocalSearchParams<{ assessmentId: string }>();
   const { session } = useAuthStore();
   const drafts = useAssessmentsStore((state) => state.drafts);
   const setPhoto = useAssessmentsStore((state) => state.setPhoto);
   const initializeDraft = useAssessmentsStore((state) => state.initializeDraft);
 
-  const { data: assessment, isLoading } = useQuery({
+  const { data: assessment, isLoading, refetch } = useQuery({
     queryKey: ['assessment', assessmentId],
     queryFn: () => getEvaluationById(session?.token!, assessmentId!),
     enabled: !!session?.token && !!assessmentId,
   });
+  useRefetchOnFocus(refetch, Boolean(session?.token && assessmentId));
 
   useEffect(() => {
     if (assessment) {

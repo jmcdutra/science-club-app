@@ -1,5 +1,5 @@
 import { ArrowLeft, CalendarCheck, ForkKnife, ListChecks } from 'phosphor-react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
@@ -7,8 +7,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/src/shared/components/ui/AppText';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
+import { useRefetchOnFocus } from '@/src/shared/hooks/useRefetchOnFocus';
 
 import { getEvaluationById } from '../api/assessments';
+import { formatAssessmentDateTime, getResponsibleProfessionals } from '../utils';
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 
@@ -66,13 +68,15 @@ function HighlightRow({
 /* ─── Screen ─────────────────────────────────────────────────────────────── */
 
 export function AssessmentResultScreen() {
+  const router = useRouter();
   const { assessmentId } = useLocalSearchParams<{ assessmentId: string }>();
   const { session } = useAuthStore();
-  const { data: assessment, isLoading } = useQuery({
+  const { data: assessment, isLoading, refetch } = useQuery({
     queryKey: ['assessment', assessmentId],
     queryFn: () => getEvaluationById(session?.token!, assessmentId!),
     enabled: !!session?.token && !!assessmentId,
   });
+  useRefetchOnFocus(refetch, Boolean(session?.token && assessmentId));
 
   if (isLoading || !assessment) {
     return (
@@ -85,8 +89,27 @@ export function AssessmentResultScreen() {
   }
 
   const result = assessment.result;
-  const coachName = assessment.professional?.name ?? 'Coach';
+  const hasFinalResult =
+    assessment.status === 'done' &&
+    Boolean(
+      result?.deliveredAt ||
+      result?.coachMessage ||
+      result?.trainingDecision ||
+      result?.dietDecision ||
+      (result?.nextSteps?.length ?? 0) > 0 ||
+      result?.nextAssessmentAt
+    );
+  const responsibleNames = getResponsibleProfessionals(assessment);
+  const coachName =
+    responsibleNames.length > 0
+      ? responsibleNames.join(' • ')
+      : assessment.professional?.name ?? 'Equipe Science Club';
   const initials = getInitials(coachName);
+  const hasProfessionalObservations = Boolean(
+    result?.coachMessage?.trim() ||
+    result?.trainingDecision?.trim() ||
+    result?.dietDecision?.trim()
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000000' }}>
@@ -146,7 +169,7 @@ export function AssessmentResultScreen() {
                   width: 6,
                   height: 6,
                   borderRadius: 99,
-                  backgroundColor: result ? '#34D399' : '#A78BFA',
+                  backgroundColor: hasFinalResult ? '#34D399' : '#A78BFA',
                 }}
               />
               <AppText
@@ -155,10 +178,10 @@ export function AssessmentResultScreen() {
                   fontWeight: '700',
                   textTransform: 'uppercase',
                   letterSpacing: 2,
-                  color: result ? '#34D399' : '#A78BFA',
+                  color: hasFinalResult ? '#34D399' : '#A78BFA',
                 }}
               >
-                {result ? 'Parecer entregue' : 'Em preparo'}
+                {hasFinalResult ? 'Parecer entregue' : 'Parecer pendente'}
               </AppText>
             </View>
             <AppText
@@ -175,7 +198,7 @@ export function AssessmentResultScreen() {
             </AppText>
           </Animated.View>
 
-          {result ? (
+          {hasFinalResult && result ? (
             <View style={{ gap: 10 }}>
               {/* ── Coach card ── */}
               <Animated.View
@@ -221,7 +244,7 @@ export function AssessmentResultScreen() {
                       {coachName}
                     </AppText>
                     <AppText style={{ fontSize: 11, color: '#555555', marginTop: 1 }}>
-                      Publicado em {result.deliveredAt}
+                      Publicado em {formatAssessmentDateTime(result.deliveredAt)}
                     </AppText>
                   </View>
 
@@ -249,26 +272,50 @@ export function AssessmentResultScreen() {
                 </View>
 
                 {/* Coach message */}
-                <AppText
-                  style={{
-                    fontSize: 13,
-                    color: 'rgba(255,255,255,0.82)',
-                    lineHeight: 22,
-                  }}
-                >
-                  {result.coachMessage}
-                </AppText>
+                {result.coachMessage ? (
+                  <AppText
+                    style={{
+                      fontSize: 13,
+                      color: 'rgba(255,255,255,0.82)',
+                      lineHeight: 22,
+                    }}
+                  >
+                    {result.coachMessage}
+                  </AppText>
+                ) : !hasProfessionalObservations ? (
+                  <View
+                    style={{
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: 'rgba(255,255,255,0.08)',
+                      backgroundColor: 'rgba(255,255,255,0.03)',
+                      padding: 14,
+                    }}
+                  >
+                    <AppText
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '600',
+                        color: '#FFFFFF',
+                      }}
+                    >
+                      Nenhuma observação atribuída
+                    </AppText>
+                  </View>
+                ) : null}
               </Animated.View>
 
               {/* ── Decision highlights ── */}
-              <Animated.View entering={FadeInDown.delay(120).duration(420)} style={{ gap: 8 }}>
-                {result.trainingDecision ? (
-                  <HighlightRow icon={ListChecks} text={result.trainingDecision} />
-                ) : null}
-                {result.dietDecision ? (
-                  <HighlightRow icon={ForkKnife} text={result.dietDecision} />
-                ) : null}
-              </Animated.View>
+              {hasProfessionalObservations ? (
+                <Animated.View entering={FadeInDown.delay(120).duration(420)} style={{ gap: 8 }}>
+                  {result.trainingDecision ? (
+                    <HighlightRow icon={ListChecks} text={result.trainingDecision} />
+                  ) : null}
+                  {result.dietDecision ? (
+                    <HighlightRow icon={ForkKnife} text={result.dietDecision} />
+                  ) : null}
+                </Animated.View>
+              ) : null}
 
               {/* ── Next goals + next assessment date ── */}
               {((result.nextSteps ?? []).length > 0 || result.nextAssessmentAt) && (
@@ -379,7 +426,7 @@ export function AssessmentResultScreen() {
               )}
             </View>
           ) : (
-            /* ── Em preparo state ── */
+            /* ── Parecer pendente ── */
             <Animated.View
               entering={FadeInDown.delay(80).duration(420)}
               style={{
@@ -393,11 +440,11 @@ export function AssessmentResultScreen() {
               <AppText
                 style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF', marginBottom: 6 }}
               >
-                Equipe analisando
+                Avaliação em análise
               </AppText>
               <AppText style={{ fontSize: 13, color: '#666666', lineHeight: 18 }}>
-                Quando o parecer estiver pronto, você verá os ajustes de treino, dieta e
-                orientações nesta página.
+                Sua avaliação está sendo avaliada pela equipe. Em alguns dias, seu plano de treino
+                e dieta estará pronto aqui.
               </AppText>
             </Animated.View>
           )}

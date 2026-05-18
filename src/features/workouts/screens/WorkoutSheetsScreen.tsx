@@ -34,6 +34,8 @@ import { PageHeader } from "@/src/shared/components/layout/PageHeader";
 import { AppButton } from "@/src/shared/components/ui/AppButton";
 import { AppText } from "@/src/shared/components/ui/AppText";
 import { NotificationsModal } from "@/src/shared/components/ui/NotificationsModal";
+import { resolveApiUrl } from "@/src/shared/api/apiClient";
+import { useRefetchOnFocus } from "@/src/shared/hooks/useRefetchOnFocus";
 import { useAppTheme } from "@/src/shared/theme/appTheme";
 import { useAuthStore } from "@/src/features/auth/services/auth.store";
 
@@ -48,18 +50,17 @@ import {
   type EvaluationDTO,
 } from "../../assessments/api/assessments";
 import { WorkoutNativeBottomSheet } from "../components/WorkoutNativeBottomSheet";
-import { workoutSheets } from "../data/workoutSheets";
 
 type WorkoutPreview = {
   sheet: WorkoutSheetDTO;
   session: WorkoutSessionDTO;
-  image: number;
+  image: any;
   label: string;
   progress: number;
   displayTitle: string;
   displayExercises: number;
   displayMinutes: number;
-  displayKcal: number;
+  displaySeriesCount: number;
 };
 
 type CurrentWorkoutData = Awaited<ReturnType<typeof getCurrentWorkout>>;
@@ -75,13 +76,7 @@ const WORKOUT_IMAGES = [
   require("@/assets/images/photoshoot/photoshoot-30.jpeg"),
 ];
 
-const WORKOUT_CARD_META = [
-  { title: "Peito e Triceps", exercises: 5, minutes: 55, kcal: 380 },
-  { title: "Costas e Biceps", exercises: 6, minutes: 52, kcal: 350 },
-  { title: "Pernas e Gluteos", exercises: 7, minutes: 65, kcal: 520 },
-  { title: "Ombros e Trapezio", exercises: 5, minutes: 45, kcal: 290 },
-  { title: "Core e Cardio", exercises: 6, minutes: 35, kcal: 280 },
-];
+const COLD_DAY_ICON = require("@/assets/images/cold_icon.png");
 
 const MUSCLE_LABELS: Record<string, string> = {
   Abdomen: "Abdomen",
@@ -97,6 +92,17 @@ const MUSCLE_LABELS: Record<string, string> = {
   Quadriceps: "Quadriceps",
   Triceps: "Triceps",
 };
+
+const WEEK_LABELS = ["D", "S", "T", "Q", "Q", "S", "S"];
+const WEEK_DAY_NAMES = [
+  "Domingo",
+  "Segunda-feira",
+  "Terça-feira",
+  "Quarta-feira",
+  "Quinta-feira",
+  "Sexta-feira",
+  "Sábado",
+];
 
 function isGenericWorkoutTitle(title: string) {
   const normalized = title.trim().toLowerCase();
@@ -117,12 +123,33 @@ function getDisplayTitle(session: WorkoutSessionDTO, index: number) {
     if (visibleMuscles.length === 1) return visibleMuscles[0];
   }
 
-  return WORKOUT_CARD_META[index % WORKOUT_CARD_META.length].title;
+  return `Treino ${String.fromCharCode(65 + index)}`;
 }
 
-function StreakStrip() {
-  const days = ["S", "T", "Q", "Q", "S", "S", "D"];
-  const status = ["done", "done", "done", "today", "", "", ""];
+function getWorkoutDayIndex(day: string) {
+  return WEEK_DAY_NAMES.findIndex((item) => item === day);
+}
+
+function resolveWorkoutCardImage(session: WorkoutSessionDTO, index: number) {
+  const coverUrl = session.exercises[0]?.coverUrl;
+  const resolvedCoverUrl = resolveApiUrl(coverUrl);
+  return resolvedCoverUrl ? { uri: resolvedCoverUrl } : WORKOUT_IMAGES[index % WORKOUT_IMAGES.length];
+}
+
+function isSessionCompleted(
+  data: CurrentWorkoutData | undefined,
+  session: WorkoutSessionDTO,
+) {
+  return getProgress(data, session.id) >= getTotalSets(session) && getTotalSets(session) > 0;
+}
+
+function StreakStrip({
+  items,
+  completedCount,
+}: {
+  items: Array<{ label: string; state: "done" | "today" | "scheduled" | "frozen" }>;
+  completedCount: number;
+}) {
 
   return (
     <View
@@ -141,20 +168,22 @@ function StreakStrip() {
       </AppText>
       <View className="flex-row items-center">
         <View className="flex-row items-center gap-2">
-          {days.map((day, index) => {
-            const isDone = status[index] === "done";
-            const isToday = status[index] === "today";
+          {items.map((day, index) => {
+            const isDone = day.state === "done";
+            const isToday = day.state === "today";
+            const isScheduled = day.state === "scheduled";
+            const isFrozen = day.state === "frozen";
 
             return (
-              <View key={`${day}-${index}`} className="items-center gap-1">
+              <View key={`${day.label}-${index}`} className="items-center gap-1">
                 <AppText
                   style={{
                     fontSize: 9,
                     fontWeight: isToday ? "700" : "500",
-                    color: isToday ? "#8B5CF6" : "#777777",
+                    color: isToday ? "#8B5CF6" : isScheduled ? "#A78BFA" : "#777777",
                   }}
                 >
-                  {day}
+                  {day.label}
                 </AppText>
                 <View
                   style={{
@@ -167,19 +196,22 @@ function StreakStrip() {
                       ? "#8B5CF6"
                       : isDone
                         ? "rgba(139,92,246,0.20)"
-                        : "#181818",
+                        : isScheduled
+                          ? "rgba(139,92,246,0.08)"
+                          : "#181818",
                     borderWidth: 1,
                     borderColor: isToday
                       ? "#8B5CF6"
                       : isDone
                         ? "rgba(139,92,246,0.24)"
-                        : "#262626",
+                        : isScheduled
+                          ? "rgba(139,92,246,0.28)"
+                          : "#262626",
                   }}
                 >
                   {isDone ? (
                     <Check size={10} color="#A78BFA" weight="bold" />
-                  ) : null}
-                  {isToday ? (
+                  ) : isToday ? (
                     <View
                       style={{
                         width: 5,
@@ -187,6 +219,12 @@ function StreakStrip() {
                         borderRadius: 99,
                         backgroundColor: "#FFFFFF",
                       }}
+                    />
+                  ) : isFrozen ? (
+                    <Image
+                      source={COLD_DAY_ICON}
+                      contentFit="contain"
+                      style={{ width: 14, height: 14 }}
                     />
                   ) : null}
                 </View>
@@ -204,7 +242,7 @@ function StreakStrip() {
             className="text-[11px] font-bold"
             style={{ color: "#FBBF24" }}
           >
-            3 dias
+            {completedCount} dias
           </AppText>
         </View>
       </View>
@@ -370,7 +408,7 @@ function WorkoutOverviewContent({
     displayTitle,
     displayExercises,
     displayMinutes,
-    displayKcal,
+    displaySeriesCount,
   } = preview;
   const muscles = [
     ...new Set(session.exercises.map((exercise) => exercise.muscle)),
@@ -443,7 +481,7 @@ function WorkoutOverviewContent({
               ~{displayMinutes} min
             </AppText>
             <AppText className="text-xs font-medium text-white/55">
-              {displayKcal} kcal
+              {displaySeriesCount} séries
             </AppText>
           </View>
           <View className="mt-3 flex-row flex-wrap gap-2">
@@ -574,7 +612,7 @@ function WorkoutPhotoCard({
     displayTitle,
     displayExercises,
     displayMinutes,
-    displayKcal,
+    displaySeriesCount,
   } = item;
   const totalSets = session.exercises.reduce(
     (sum, exercise) => sum + exercise.sets.length,
@@ -726,7 +764,7 @@ function WorkoutPhotoCard({
                 <View className="flex-row items-center gap-1">
                   <Flame size={10} color="#8B5CF6" weight="fill" />
                   <AppText className="text-[11px] font-medium text-white/60">
-                    {displayKcal} kcal
+                    {displaySeriesCount} séries
                   </AppText>
                 </View>
               </View>
@@ -746,25 +784,25 @@ export function WorkoutSheetsScreen() {
   const [preview, setPreview] = useState<WorkoutPreview | null>(null);
   const [notifVisible, setNotifVisible] = useState(false);
 
-  const { data: evaluations } = useQuery({
+  const { data: evaluations, refetch: refetchEvaluations } = useQuery({
     queryKey: ["assessments"],
     queryFn: () => getStudentEvaluations(session?.token!),
     enabled: !!session?.token,
   });
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch: refetchWorkout } = useQuery({
     queryKey: ["student-workout-current"],
     queryFn: () => getCurrentWorkout(session?.token!),
     enabled: !!session?.token,
   });
+  useRefetchOnFocus(refetchEvaluations, Boolean(session?.token));
+  useRefetchOnFocus(refetchWorkout, Boolean(session?.token));
 
-  const primarySheet = (data?.workout || workoutSheets[0]) as WorkoutSheetDTO;
+  const primarySheet = data?.workout ?? null;
   const hasWorkoutAccess = data?.hasAccess !== false;
   const workoutUpgradeUrl = data?.whatsappUpgradeUrl;
   const todaySession =
-    primarySheet?.sessions.find((s) => s.id === data?.todaySessionId) ||
-    primarySheet?.sessions[0] ||
-    null;
-  const hasWorkout = Boolean(primarySheet && todaySession);
+    primarySheet?.sessions.find((s) => s.id === data?.todaySessionId) || null;
+  const hasWorkout = Boolean(primarySheet?.sessions.length);
   const questionnaire = session?.released_questionnaire;
   const hasSubmittedEvaluation = evaluations?.some(
     (ev: EvaluationDTO) =>
@@ -777,34 +815,86 @@ export function WorkoutSheetsScreen() {
   const workoutItems = useMemo<WorkoutPreview[]>(() => {
     if (!primarySheet) return [];
     return primarySheet.sessions.map((workoutSession, index) => {
-      const meta = WORKOUT_CARD_META[index % WORKOUT_CARD_META.length];
       const rawExerciseCount = workoutSession.exercises?.length ?? 0;
+      const rawSeriesCount = workoutSession.exercises.reduce(
+        (sum, exercise) =>
+          sum +
+          exercise.sets.filter(
+            (set) =>
+              set.type !== "warmup" &&
+              set.type !== "preparatory" &&
+              set.label !== "Aquecimento" &&
+              set.label !== "Preparatória",
+          ).length,
+        0,
+      );
       return {
         sheet: primarySheet,
         session: workoutSession,
-        image: WORKOUT_IMAGES[index % WORKOUT_IMAGES.length],
+        image: resolveWorkoutCardImage(workoutSession, index),
         label: `Treino ${String.fromCharCode(65 + index)}`,
         progress: getProgress(data, workoutSession.id),
         displayTitle: getDisplayTitle(workoutSession, index),
-        displayExercises:
-          rawExerciseCount > 2 ? rawExerciseCount : meta.exercises,
-        displayMinutes:
-          workoutSession.estimatedMinutes > 20
-            ? workoutSession.estimatedMinutes
-            : meta.minutes,
-        displayKcal: meta.kcal,
+        displayExercises: rawExerciseCount,
+        displayMinutes: workoutSession.estimatedMinutes,
+        displaySeriesCount: rawSeriesCount,
       };
     });
   }, [data, primarySheet]);
 
-  const nextWorkout =
-    workoutItems.find(
-      (item) => item.progress > 0 && item.progress < getTotalSets(item.session),
-    ) ??
-    workoutItems.find((item) => item.progress < getTotalSets(item.session)) ??
-    workoutItems.find((item) => item.session.id === todaySession?.id) ??
-    workoutItems[0] ??
-    null;
+  const nextWorkout = useMemo(() => {
+    if (!workoutItems.length) return null;
+
+    const todayIndex = new Date().getDay();
+    const todayItem = todaySession
+      ? workoutItems.find((item) => item.session.id === todaySession.id) ?? null
+      : null;
+
+    if (todayItem && !isSessionCompleted(data, todayItem.session)) {
+      return todayItem;
+    }
+
+    for (let offset = 1; offset <= 7; offset += 1) {
+      const lookupDay = (todayIndex + offset) % 7;
+      const upcoming = workoutItems.find(
+        (item) => getWorkoutDayIndex(item.session.days) === lookupDay,
+      );
+      if (upcoming) return upcoming;
+    }
+
+    return todayItem ?? workoutItems[0] ?? null;
+  }, [data, todaySession, workoutItems]);
+
+  const weekSequence = useMemo(() => {
+    const scheduledByDay = new Map<number, WorkoutPreview>();
+    workoutItems.forEach((item) => {
+      const dayIndex = getWorkoutDayIndex(item.session.days);
+      if (dayIndex >= 0 && !scheduledByDay.has(dayIndex)) {
+        scheduledByDay.set(dayIndex, item);
+      }
+    });
+
+    return WEEK_DAY_NAMES.map((_, index) => {
+      const preview = scheduledByDay.get(index);
+      if (!preview) {
+        return { label: WEEK_LABELS[index], state: "frozen" as const };
+      }
+
+      if (index === new Date().getDay() && !isSessionCompleted(data, preview.session)) {
+        return { label: WEEK_LABELS[index], state: "today" as const };
+      }
+
+      return {
+        label: WEEK_LABELS[index],
+        state: isSessionCompleted(data, preview.session) ? ("done" as const) : ("scheduled" as const),
+      };
+    });
+  }, [data, workoutItems]);
+
+  const completedWeekCount = useMemo(
+    () => weekSequence.filter((item) => item.state === "done").length,
+    [weekSequence],
+  );
 
   const filteredWorkouts = workoutItems.filter((item) => {
     if (item.session.id === nextWorkout?.session.id && !query) return false;
@@ -916,7 +1006,7 @@ export function WorkoutSheetsScreen() {
             overScrollMode="never"
             showsVerticalScrollIndicator={false}
           >
-            <StreakStrip />
+            <StreakStrip items={weekSequence} completedCount={completedWeekCount} />
 
             <View className="mb-6">
               <View className="mb-3 flex-row items-end justify-between">

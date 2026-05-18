@@ -1,4 +1,10 @@
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.scienceclub.local';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.scienceclub.local';
+
+export function resolveApiUrl(path?: string | null) {
+  if (!path) return null;
+  if (/^(https?:)?\/\//i.test(path) || path.startsWith('data:')) return path;
+  return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+}
 
 export type ApiClientOptions = RequestInit & {
   token?: string | null;

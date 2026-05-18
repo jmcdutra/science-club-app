@@ -101,7 +101,7 @@ export function ProfileAboutScreen() {
             <AppText
               style={{ fontSize: 14, color: isDark ? "#888888" : "#6B7280" }}
             >
-              Versão 2.4.1
+              Versão 1.0.0
             </AppText>
           </Animated.View>
 

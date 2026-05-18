@@ -16,6 +16,7 @@ import {
   AppThemeProvider,
   resolveAppColorScheme,
 } from '@/src/shared/theme/appTheme';
+import { useThemePreferenceStore } from '@/src/shared/theme/themePreference.store';
 import {
   DarkNavigationTheme,
   LightNavigationTheme,
@@ -24,6 +25,11 @@ import {
 enableScreens();
 
 export default function RootLayout() {
+  const themePreference = useThemePreferenceStore((state) => state.themePreference);
+  const hydrateThemePreference = useThemePreferenceStore((state) => state.hydrate);
+  const [systemColorScheme, setSystemColorScheme] = useState(() =>
+    resolveAppColorScheme(Appearance.getColorScheme()),
+  );
   const [resolvedColorScheme, setResolvedColorScheme] = useState(() =>
     resolveAppColorScheme(Appearance.getColorScheme()),
   );
@@ -35,6 +41,10 @@ export default function RootLayout() {
   const activeSchemeRef = useRef(resolvedColorScheme);
   const isTransitioningRef = useRef(false);
   const mountedSnapshotRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    void hydrateThemePreference();
+  }, [hydrateThemePreference]);
 
   useEffect(() => {
     activeSchemeRef.current = resolvedColorScheme;
@@ -58,7 +68,7 @@ export default function RootLayout() {
     let snapshotUri: string | null = null;
 
     try {
-      snapshotUri = await viewShotRef.current?.capture();
+      snapshotUri = (await viewShotRef.current?.capture()) ?? null;
     } catch {
       snapshotUri = null;
     }
@@ -92,22 +102,27 @@ export default function RootLayout() {
 
   useEffect(() => {
     const subscription = Appearance.addChangeListener(({ colorScheme }) => {
-      const nextScheme = resolveAppColorScheme(colorScheme);
-
-      if (
-        nextScheme === activeSchemeRef.current ||
-        isTransitioningRef.current
-      ) {
-        return;
-      }
-
-      void transitionTheme(nextScheme);
+      setSystemColorScheme(resolveAppColorScheme(colorScheme));
     });
 
     return () => {
       subscription.remove();
     };
   }, [transitionTheme]);
+
+  useEffect(() => {
+    const nextScheme =
+      themePreference === 'system' ? systemColorScheme : themePreference;
+
+    if (
+      nextScheme === activeSchemeRef.current ||
+      isTransitioningRef.current
+    ) {
+      return;
+    }
+
+    void transitionTheme(nextScheme);
+  }, [systemColorScheme, themePreference, transitionTheme]);
 
   const activeNavigationTheme =
     resolvedColorScheme === 'light' ? LightNavigationTheme : DarkNavigationTheme;
@@ -129,11 +144,12 @@ export default function RootLayout() {
           <StatusBar style={resolvedColorScheme === 'light' ? 'dark' : 'light'} />
         </ThemeProvider>
         {transitionSnapshotUri ? (
-          <Animated.Image
-            pointerEvents="none"
-            source={{ uri: transitionSnapshotUri }}
-            style={[styles.transitionOverlay, { opacity: transitionOpacity }]}
-          />
+          <View pointerEvents="none" style={styles.transitionOverlay}>
+            <Animated.Image
+              source={{ uri: transitionSnapshotUri }}
+              style={[styles.transitionOverlay, { opacity: transitionOpacity }]}
+            />
+          </View>
         ) : null}
       </View>
     </AppThemeProvider>

@@ -8,6 +8,7 @@ import {
 } from "phosphor-react-native";
 import { router, type Href } from "expo-router";
 import {
+  type ImageSourcePropType,
   ImageBackground,
   Pressable,
   ScrollView,
@@ -27,10 +28,11 @@ import Svg, {
 } from "react-native-svg";
 
 import { AppText } from "@/src/shared/components/ui/AppText";
-import { AppButton } from "@/src/shared/components/ui/AppButton";
 import { AppLottie } from "@/src/shared/components/ui/AppLottie";
 import { NotificationsModal } from "@/src/shared/components/ui/NotificationsModal";
 import { PageHeader } from "@/src/shared/components/layout/PageHeader";
+import { resolveApiUrl } from "@/src/shared/api/apiClient";
+import { useRefetchOnFocus } from "@/src/shared/hooks/useRefetchOnFocus";
 import { useAuthStore } from "@/src/features/auth/services/auth.store";
 import {
   createEvaluation,
@@ -38,7 +40,6 @@ import {
   type EvaluationDTO,
 } from "../../assessments/api/assessments";
 import { getCurrentWorkout } from "../../workouts/api/workouts";
-import { workoutSheets } from "../../workouts/data/workoutSheets";
 import { getCurrentDiet } from "../../diet/api/diet";
 
 /* ─── Constants ─────────────────────────────────────────────────────────── */
@@ -185,17 +186,106 @@ function WeekStrip() {
 
 type HeroCardProps = {
   sessionTitle: string;
-  exercisesCount: number;
-  estimatedMinutes: number;
-  hasWorkout: boolean;
+  subtitle: string;
+  metaText: string;
+  buttonLabel: string;
+  imageSource: ImageSourcePropType;
+  actionEnabled: boolean;
   onStart: () => void;
 };
 
+function HomeActionButton({
+  label,
+  onPress,
+  disabled = false,
+  loading = false,
+  leftIcon,
+  rightIcon,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  leftIcon?: React.ReactNode;
+  rightIcon?: React.ReactNode;
+}) {
+  const contentColor = disabled ? "#888888" : "#FFFFFF";
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled || loading}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        width: "100%",
+        minHeight: 52,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: "transparent",
+        backgroundColor: disabled ? "#1A1A1A" : "#8B5CF6",
+        opacity: disabled || loading ? 0.55 : 1,
+        transform: [{ scale: pressed && !disabled && !loading ? 0.98 : 1 }],
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        shadowColor: disabled ? "transparent" : "#8B5CF6",
+        shadowOpacity: disabled ? 0 : 0.3,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: disabled ? 0 : 6,
+      })}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "100%",
+        }}
+      >
+        <View
+          style={{
+            width: 20,
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: leftIcon ? 1 : 0,
+          }}
+        >
+          {leftIcon ?? <View />}
+        </View>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 }}>
+          <AppText
+            style={{
+              color: contentColor,
+              fontWeight: "600",
+              fontSize: 15,
+              textAlign: "center",
+            }}
+          >
+            {loading ? "Carregando..." : label}
+          </AppText>
+        </View>
+        <View
+          style={{
+            width: 20,
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: rightIcon ? 1 : 0,
+          }}
+        >
+          {rightIcon ?? <View />}
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
 function HeroWorkoutCard({
   sessionTitle,
-  exercisesCount,
-  estimatedMinutes,
-  hasWorkout,
+  subtitle,
+  metaText,
+  buttonLabel,
+  imageSource,
+  actionEnabled,
   onStart,
 }: HeroCardProps) {
   return (
@@ -212,7 +302,7 @@ function HeroWorkoutCard({
       }}
     >
       <ImageBackground
-        source={WORKOUT_HERO_IMAGE}
+        source={imageSource}
         resizeMode="cover"
         imageStyle={{ borderRadius: 24 }}
         style={{ flex: 1, width: "100%" }}
@@ -246,9 +336,7 @@ function HeroWorkoutCard({
                   fontWeight: "600",
                 }}
               >
-                {hasWorkout && estimatedMinutes > 0
-                  ? `${estimatedMinutes} min`
-                  : "Em breve"}
+                {metaText}
               </AppText>
             </View>
           </View>
@@ -275,34 +363,21 @@ function HeroWorkoutCard({
                 marginBottom: 14,
               }}
             >
-              {hasWorkout
-                ? `${exercisesCount} exercícios`
-                : "Seu treino ainda está sendo preparado pela equipe."}
+              {subtitle}
             </AppText>
 
-            <AppButton
-              variant={hasWorkout ? "primary" : "secondary"}
-              fullWidth
+            <HomeActionButton
+              label={buttonLabel}
               onPress={onStart}
-              disabled={!hasWorkout}
+              disabled={!actionEnabled}
               leftIcon={
                 <Play
                   size={16}
-                  color={hasWorkout ? "#fff" : "#888888"}
+                  color={actionEnabled ? "#fff" : "#888888"}
                   weight="fill"
                 />
               }
-            >
-              <AppText
-                style={{
-                  color: hasWorkout ? "#fff" : "#888888",
-                  fontWeight: "600",
-                  fontSize: 15,
-                }}
-              >
-                {hasWorkout ? "Começar Treino" : "Treino em preparo"}
-              </AppText>
-            </AppButton>
+            />
           </View>
         </View>
       </ImageBackground>
@@ -385,9 +460,8 @@ function AssessmentPendingCard({
       </View>
 
       <View style={{ width: "100%" }}>
-        <AppButton
-          fullWidth
-          variant="primary"
+        <HomeActionButton
+          label="Responder agora"
           onPress={onPress}
           loading={loading}
           rightIcon={
@@ -395,13 +469,7 @@ function AssessmentPendingCard({
               <ArrowRight size={16} color="#FFFFFF" weight="bold" />
             ) : undefined
           }
-        >
-          <AppText
-            style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}
-          >
-            Responder agora
-          </AppText>
-        </AppButton>
+        />
       </View>
     </View>
   );
@@ -486,23 +554,26 @@ export function HomeScreen() {
   const [isCreating, setIsCreating] = useState(false);
   const [notifVisible, setNotifVisible] = useState(false);
 
-  const { data: workoutData } = useQuery({
+  const { data: workoutData, refetch: refetchWorkout } = useQuery({
     queryKey: ["current-workout"],
     queryFn: () => getCurrentWorkout(session?.token!),
     enabled: !!session?.token,
   });
 
-  const { data: dietData } = useQuery({
+  const { data: dietData, refetch: refetchDiet } = useQuery({
     queryKey: ["current-diet"],
     queryFn: () => getCurrentDiet(session?.token!),
     enabled: !!session?.token,
   });
 
-  const { data: evaluations } = useQuery({
+  const { data: evaluations, refetch: refetchEvaluations } = useQuery({
     queryKey: ["assessments"],
     queryFn: () => getStudentEvaluations(session?.token!),
     enabled: !!session?.token,
   });
+  useRefetchOnFocus(refetchWorkout, Boolean(session?.token));
+  useRefetchOnFocus(refetchDiet, Boolean(session?.token));
+  useRefetchOnFocus(refetchEvaluations, Boolean(session?.token));
 
   const handleStartAssessment = async () => {
     if (!session?.token || !session?.released_questionnaire?.id) return;
@@ -539,27 +610,46 @@ export function HomeScreen() {
   const showQuestionnaireCard = questionnaire && !hasSubmittedEvaluation;
 
   /* workout */
+  const currentWorkout = workoutData?.workout ?? null;
+  const hasAnyWorkout = Boolean(currentWorkout?.sessions?.length);
   const todaySession = useMemo(() => {
-    const workout = workoutData?.workout || workoutSheets[0];
-    return (
-      workout.sessions.find((s) => s.id === workoutData?.todaySessionId) ??
-      workout.sessions[0] ??
-      null
-    );
-  }, [workoutData]);
+    if (!currentWorkout || !workoutData?.todaySessionId) return null;
+    return currentWorkout.sessions.find((s) => s.id === workoutData.todaySessionId) ?? null;
+  }, [currentWorkout, workoutData]);
 
-  const totalSets = useMemo(
-    () =>
-      todaySession?.exercises.reduce((sum, ex) => sum + ex.sets.length, 0) ?? 0,
-    [todaySession],
-  );
+  const validSetsCount = useMemo(() => {
+    if (!todaySession) return 0;
+    return todaySession.exercises.reduce(
+      (sum, exercise) =>
+        sum +
+        exercise.sets.filter(
+          (set) =>
+            set.type !== "warmup" &&
+            set.type !== "preparatory" &&
+            set.label !== "Aquecimento" &&
+            set.label !== "Preparatória",
+        ).length,
+      0,
+    );
+  }, [todaySession]);
+
+  const heroImageSource = useMemo<ImageSourcePropType>(() => {
+    const coverUrl = todaySession?.exercises[0]?.coverUrl;
+    const resolvedCoverUrl = resolveApiUrl(coverUrl);
+    return resolvedCoverUrl ? { uri: resolvedCoverUrl } : WORKOUT_HERO_IMAGE;
+  }, [todaySession]);
 
   const handleStartWorkout = () => {
-    const workout = workoutData?.workout || workoutSheets[0];
-    if (!workout || !todaySession?.id) return;
-    router.push(
-      `/(app)/workouts/${workout.id}/session?sessionId=${todaySession.id}` as Href,
-    );
+    if (currentWorkout && todaySession?.id) {
+      router.push(
+        `/(app)/workouts/${currentWorkout.id}/session?sessionId=${todaySession.id}` as Href,
+      );
+      return;
+    }
+
+    if (hasAnyWorkout) {
+      router.push("/(app)/(tabs)/workouts" as Href);
+    }
   };
 
   /* diet */
@@ -578,6 +668,41 @@ export function HomeScreen() {
   const caloriesTarget = dietData?.diet?.targets?.calories ?? 0;
   const waterMl = dietData?.dayLog?.waterMl ?? 0;
   const waterTargetL = (dietData?.diet?.targets?.waterMl ?? 3000) / 1000;
+  const caloriesValue =
+    caloriesConsumed > 0
+      ? caloriesConsumed.toLocaleString("pt-BR")
+      : caloriesTarget > 0
+        ? caloriesTarget.toLocaleString("pt-BR")
+        : "—";
+  const caloriesUnit =
+    caloriesConsumed > 0 && caloriesTarget > 0
+      ? `/${caloriesTarget.toLocaleString("pt-BR")}`
+      : "kcal";
+  const hydrationValueMl = waterMl > 0 ? waterMl : dietData?.diet?.targets?.waterMl ?? 0;
+  const hydrationValue =
+    hydrationValueMl > 0 ? (hydrationValueMl / 1000).toFixed(2).replace(".", ",") : "—";
+  const hydrationUnit =
+    waterMl > 0 ? `/${waterTargetL.toFixed(0)}L` : "L";
+  const heroTitle = todaySession
+    ? todaySession.title
+    : hasAnyWorkout
+      ? "Hoje é dia de descanso"
+      : "Treino em preparação";
+  const heroSubtitle = todaySession
+    ? `${todaySession.exercises.length} exercícios programados para hoje`
+    : hasAnyWorkout
+      ? "Nenhum treino programado para hoje. Aproveite para recuperar."
+      : "Seu treino ainda está sendo preparado pela equipe.";
+  const heroMeta = todaySession?.estimatedMinutes
+    ? `${todaySession.estimatedMinutes} min`
+    : hasAnyWorkout
+      ? "Descanso"
+      : "Em breve";
+  const heroButtonLabel = todaySession
+    ? "Começar Treino"
+    : hasAnyWorkout
+      ? "Ver treinos da semana"
+      : "Treino em preparo";
 
   return (
     <View style={{ flex: 1, backgroundColor: "#000000" }}>
@@ -598,17 +723,17 @@ export function HomeScreen() {
             <WeekStrip />
           </Animated.View>
 
-          {!!todaySession && (
-            <Animated.View entering={FadeInDown.delay(160).duration(500)}>
-              <HeroWorkoutCard
-                sessionTitle={todaySession.title}
-                exercisesCount={todaySession.exercises.length}
-                estimatedMinutes={todaySession.estimatedMinutes ?? 0}
-                hasWorkout
-                onStart={handleStartWorkout}
-              />
-            </Animated.View>
-          )}
+          <Animated.View entering={FadeInDown.delay(160).duration(500)}>
+            <HeroWorkoutCard
+              sessionTitle={heroTitle}
+              subtitle={heroSubtitle}
+              metaText={heroMeta}
+              buttonLabel={heroButtonLabel}
+              imageSource={heroImageSource}
+              actionEnabled={Boolean(todaySession) || hasAnyWorkout}
+              onStart={handleStartWorkout}
+            />
+          </Animated.View>
 
           <Animated.View
             entering={FadeInDown.delay(220).duration(500)}
@@ -618,12 +743,8 @@ export function HomeScreen() {
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <StatCard
                   label="Calorias"
-                  value={caloriesConsumed.toLocaleString("pt-BR")}
-                  unit={
-                    caloriesTarget > 0
-                      ? `/${caloriesTarget.toLocaleString("pt-BR")}`
-                      : "kcal"
-                  }
+                  value={caloriesValue}
+                  unit={caloriesUnit}
                   iconColor="#8B5CF6"
                   iconBg="rgba(139,92,246,0.12)"
                   icon={
@@ -632,8 +753,8 @@ export function HomeScreen() {
                 />
                 <StatCard
                   label="Hidratação"
-                  value={(waterMl / 1000).toFixed(2).replace(".", ",")}
-                  unit={`/${waterTargetL.toFixed(0)}L`}
+                  value={hydrationValue}
+                  unit={hydrationUnit}
                   iconColor="#22D3EE"
                   iconBg="rgba(34,211,238,0.12)"
                   icon={<Drop size={18} color="#22D3EE" weight="duotone" />}
@@ -642,7 +763,7 @@ export function HomeScreen() {
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <StatCard
                   label="Séries"
-                  value={totalSets > 0 ? totalSets.toString() : "—"}
+                  value={validSetsCount > 0 ? validSetsCount.toString() : "—"}
                   unit="séries"
                   iconColor="#6366F1"
                   iconBg="rgba(99,102,241,0.12)"
@@ -675,7 +796,9 @@ export function HomeScreen() {
         </ScrollView>
       </SafeAreaView>
 
-    <NotificationsModal visible={notifVisible} onClose={() => setNotifVisible(false)} />
+    {notifVisible ? (
+      <NotificationsModal visible={notifVisible} onClose={() => setNotifVisible(false)} />
+    ) : null}
     </View>
   );
 }

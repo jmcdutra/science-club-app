@@ -107,6 +107,7 @@ export const useDietStore = create<DietStore>((set, get) => ({
         foodLogs: currentMealLog?.foodLogs ?? [],
         skippedReason: currentMealLog?.skippedReason,
         updatedAt: new Date().toISOString(),
+        photoUrl: currentMealLog?.photoUrl,
         photoUri: payload.photoUri ?? currentMealLog?.photoUri,
         photoName: payload.photoName ?? currentMealLog?.photoName,
       };
@@ -173,6 +174,7 @@ export const useDietStore = create<DietStore>((set, get) => ({
         status: resolveMealLogStatus(mergedMeal, nextFoodLogs),
         foodLogs: nextFoodLogs,
         updatedAt: now,
+        photoUrl: currentMealLog?.photoUrl,
         photoUri: currentMealLog?.photoUri,
         photoName: currentMealLog?.photoName,
       };
@@ -200,6 +202,8 @@ export const useDietStore = create<DietStore>((set, get) => ({
         mealId,
         status: "done",
         updatedAt: now,
+        photoUrl: dayLog.mealLogs.find((item) => item.mealId === mealId)
+          ?.photoUrl,
         photoUri: dayLog.mealLogs.find((item) => item.mealId === mealId)
           ?.photoUri,
         photoName: dayLog.mealLogs.find((item) => item.mealId === mealId)
@@ -234,6 +238,8 @@ export const useDietStore = create<DietStore>((set, get) => ({
         foodLogs: [],
         skippedReason: "Pulada pelo aluno",
         updatedAt: now,
+        photoUrl: dayLog.mealLogs.find((item) => item.mealId === mealId)
+          ?.photoUrl,
         photoUri: dayLog.mealLogs.find((item) => item.mealId === mealId)
           ?.photoUri,
         photoName: dayLog.mealLogs.find((item) => item.mealId === mealId)

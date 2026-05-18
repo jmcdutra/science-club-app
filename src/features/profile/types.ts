@@ -2,36 +2,37 @@ export type StudentStatus = 'active' | 'inactive' | 'pending' | 'overdue';
 
 export type ProfilePlan = {
   name: string;
-  status: StudentStatus;
-  startDate: string;
-  renewalDate: string;
-  mesocycle: string;
-  nextCheckIn: string;
-  objective: string;
-};
-
-export type ProfileCoach = {
-  name: string;
-  role: string;
-  responseTime: string;
-  assignedSince: string;
+  startDate: string | null;
+  renewalDate: string | null;
 };
 
 export type ProfileMetrics = {
   workoutsDone: number;
-  validSets: number;
-  totalVolume: string;
-  progressions: number;
-  questionnaires: number;
+  weeksActive: number;
   adherence: number;
+  adherenceBreakdown?: {
+    percent: number;
+    expectedWorkoutSessions: number;
+    completedWorkoutSessions: number;
+    expectedDietMeals: number;
+    completedDietMeals: number;
+  };
 };
 
 export type BodySnapshot = {
-  age: number;
-  weightKg: number;
-  heightCm: number;
-  bodyFatPercent: number;
+  age: number | null;
+  weightKg: number | null;
+  heightCm: number | null;
+  bodyFatPercent: number | null;
   updatedAt: string;
+};
+
+export type BodyMeasurement = {
+  id: string;
+  weightKg: number | null;
+  heightCm: number | null;
+  bodyFatPercent: number | null;
+  recordedAt: string;
 };
 
 export type ProfileDocument = {
@@ -49,6 +50,7 @@ export type ProfilePreferences = {
   assessmentAlerts: boolean;
   privateProgress: boolean;
   communicationChannel: 'whatsapp' | 'email' | 'app';
+  themePreference: 'system' | 'light' | 'dark';
 };
 
 export type StudentProfile = {
@@ -56,16 +58,14 @@ export type StudentProfile = {
   name: string;
   email: string;
   phone: string;
-  city: string;
-  avatarVariant: number;
-  plan: ProfilePlan;
-  coach: ProfileCoach;
+  whatsapp: string;
+  cpf: string;
   metrics: ProfileMetrics;
-  body: BodySnapshot;
-  observations: string;
-  restrictions: string[];
-  currentWorkout: string;
-  currentDiet: string;
+  body: BodySnapshot | null;
   documents: ProfileDocument[];
   preferences: ProfilePreferences;
+  measurements: BodyMeasurement[];
+  plan: ProfilePlan;
+  currentWorkout: string;
+  currentDiet: string;
 };

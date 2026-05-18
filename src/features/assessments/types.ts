@@ -67,9 +67,15 @@ export type Assessment = {
 
 export type AssessmentAnswerValue = string | string[];
 
+export type AssessmentUploadAsset = {
+  uri: string;
+  name?: string;
+  mimeType?: string;
+};
+
 export type AssessmentDraft = {
   answers: Record<string, AssessmentAnswerValue>;
   photos: Record<string, string | null>;
-  exams: Record<string, string | null>;
+  exams: Record<string, AssessmentUploadAsset | string | null>;
   submitted: boolean;
 };

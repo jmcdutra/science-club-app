@@ -1,5 +1,5 @@
 import { ArrowLeft, CheckCircle, PaperPlaneTilt, WarningCircle } from 'phosphor-react-native';
-import { router, type Href, useLocalSearchParams } from 'expo-router';
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,6 +9,7 @@ import { AppScreen } from '@/src/shared/components/ui/AppScreen';
 import { AppButton } from '@/src/shared/components/ui/AppButton';
 import { AppText } from '@/src/shared/components/ui/AppText';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
+import { useRefetchOnFocus } from '@/src/shared/hooks/useRefetchOnFocus';
 
 import { createAssessmentDraft, useAssessmentsStore } from '../services/assessments.store';
 import { getEvaluationById, submitEvaluation, uploadFile } from '../api/assessments';
@@ -20,6 +21,7 @@ import {
 } from '../utils';
 
 export function AssessmentReviewScreen() {
+  const router = useRouter();
   const { assessmentId } = useLocalSearchParams<{ assessmentId: string }>();
   const { session } = useAuthStore();
   const queryClient = useQueryClient();
@@ -30,11 +32,12 @@ export function AssessmentReviewScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const { data: assessment, isLoading } = useQuery({
+  const { data: assessment, isLoading, refetch } = useQuery({
     queryKey: ['assessment', assessmentId],
     queryFn: () => getEvaluationById(session?.token!, assessmentId!),
     enabled: !!session?.token && !!assessmentId,
   });
+  useRefetchOnFocus(refetch, Boolean(session?.token && assessmentId));
 
   const mutation = useMutation({
     mutationFn: (data: any) => submitEvaluation(session?.token!, assessmentId!, data),
@@ -99,11 +102,26 @@ export function AssessmentReviewScreen() {
 
       const uploadedExams = await Promise.all(
         Object.entries(draft.exams)
-          .filter(([, uri]) => !!uri)
-          .map(async ([id, uri]) => {
-            if (uri!.startsWith('http')) return { url: uri!, label: id };
-            const { url } = await uploadFile(session?.token!, uri!, 'exams/evaluations');
-            return { url, label: id };
+          .filter(([, asset]) => !!asset)
+          .map(async ([id, asset]) => {
+            const label =
+              assessment.questionnaire.attachment_questions.find(
+                (item: any) => item.id === id || item._id === id,
+              )?.label || id;
+
+            if (!asset) return null;
+
+            if (typeof asset === 'string') {
+              if (asset.startsWith('http')) return { url: asset, label };
+              const { url } = await uploadFile(session?.token!, asset, 'exams/evaluations');
+              return { url, label };
+            }
+
+            const { url } = await uploadFile(session?.token!, asset.uri, 'exams/evaluations', {
+              name: asset.name,
+              mimeType: asset.mimeType,
+            });
+            return { url, label };
           }),
       );
 
@@ -113,7 +131,7 @@ export function AssessmentReviewScreen() {
           answer: Array.isArray(answer) ? answer.join(', ') : String(answer),
         })),
         photos: uploadedPhotos,
-        exams: uploadedExams,
+        exams: uploadedExams.filter((item): item is { url: string; label: string } => Boolean(item)),
       });
     } catch {
       setErrorMsg('Erro ao fazer upload dos arquivos. Verifique sua conexão e tente novamente.');

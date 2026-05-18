@@ -1,6 +1,14 @@
 import { apiClient } from '@/src/shared/api/apiClient';
 
-export type WorkoutSetDTO = { id: string; reps: string; weight?: string; duration?: string };
+export type WorkoutSetDTO = {
+  id: string;
+  label?: string;
+  type?: string;
+  reps: string;
+  weight?: string;
+  restSeconds?: number;
+  duration?: string;
+};
 export type WorkoutExerciseDTO = {
   id: string;
   name: string;
@@ -10,6 +18,7 @@ export type WorkoutExerciseDTO = {
   cue: string;
   description?: string;
   executionTips?: string[];
+  coverUrl?: string | null;
   videos?: {
     id: string;
     title: string;

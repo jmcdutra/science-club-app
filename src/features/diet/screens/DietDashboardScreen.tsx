@@ -20,6 +20,7 @@ import { useEffect, useState } from "react";
 import { AppText } from "@/src/shared/components/ui/AppText";
 import { NotificationsModal } from "@/src/shared/components/ui/NotificationsModal";
 import { PageHeader } from "@/src/shared/components/layout/PageHeader";
+import { useRefetchOnFocus } from "@/src/shared/hooks/useRefetchOnFocus";
 import { useAppTheme } from "@/src/shared/theme/appTheme";
 import { useAuthStore } from "@/src/features/auth/services/auth.store";
 import { EmptyPlanState } from "@/src/shared/components/layout/EmptyPlanState";
@@ -29,7 +30,7 @@ import {
   getStudentEvaluations,
   type EvaluationDTO,
 } from "../../assessments/api/assessments";
-import { getCurrentDiet, updateDietWater } from "../api/diet";
+import { getCurrentDiet, getDietAdherence, updateDietWater } from "../api/diet";
 import { useDietStore, useSelectedDietDay } from "../services/diet.store";
 import {
   getAdherence,
@@ -39,7 +40,7 @@ import {
   getNextMeal,
   getProgressPercent,
 } from "../utils";
-import type { DietFood, DietMeal, MealStatus } from "../types";
+import type { DietAdherenceDay, DietFood, DietMeal, MealStatus } from "../types";
 
 const STATUS_META: Record<
   MealStatus,
@@ -58,9 +59,6 @@ const STATUS_META: Record<
   done: { label: "Concluída", color: "#22C55E", bg: "rgba(34,197,94,0.12)" },
   skipped: { label: "Pulada", color: "#FB7185", bg: "rgba(251,113,133,0.10)" },
 };
-
-const ADHERENCE_MOCK = [82, 91, 75, 0, 0, 0, 0];
-const ADHERENCE_DAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
 type TabKey = "hoje" | "plano" | "aderencia";
 
@@ -83,6 +81,63 @@ function formatPtDate(dateKey: string) {
     .toLocaleDateString("pt-BR", { month: "short" })
     .replace(".", "");
   return `${day.charAt(0).toUpperCase()}${day.slice(1)}, ${dayNum} ${month}`;
+}
+
+function formatAdherenceRange(startDate?: string, endDate?: string) {
+  if (!startDate || !endDate) return "";
+
+  const formatDay = (value: string) =>
+    new Date(`${value}T12:00:00-03:00`)
+      .toLocaleDateString("pt-BR", {
+        day: "numeric",
+        month: "short",
+        timeZone: "America/Sao_Paulo",
+      })
+      .replace(".", "");
+
+  return `${formatDay(startDate)} - ${formatDay(endDate)}`;
+}
+
+function GoalPill({
+  label,
+  value,
+  total,
+  color,
+}: {
+  label: string;
+  value: number;
+  total: number;
+  color: string;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: "#18181B",
+        borderRadius: 14,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+      }}
+    >
+      <AppText className="text-[10px] font-bold uppercase tracking-[0.12em] text-text-muted">
+        {label}
+      </AppText>
+      <AppText
+        style={{
+          fontSize: 18,
+          fontWeight: "700",
+          color,
+          marginTop: 8,
+        }}
+      >
+        {value}
+        <AppText className="text-[10px] font-normal text-text-muted">
+          {" "}
+          / {total}
+        </AppText>
+      </AppText>
+    </View>
+  );
 }
 
 function MacroBar({
@@ -260,21 +315,31 @@ export function DietDashboardScreen() {
   const selectedDate = useDietStore((state) => state.selectedDate);
   const dayLog = useSelectedDietDay();
 
-  const { data: evaluations } = useQuery({
+  const { data: evaluations, refetch: refetchEvaluations } = useQuery({
     queryKey: ["assessments"],
     queryFn: () => getStudentEvaluations(session?.token!),
     enabled: !!session?.token,
   });
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch: refetchDiet } = useQuery({
     queryKey: ["student-diet-current"],
     queryFn: () => getCurrentDiet(session?.token!),
     enabled: !!session?.token,
   });
+  const { data: adherenceData, refetch: refetchAdherence } = useQuery({
+    queryKey: ["student-diet-adherence"],
+    queryFn: () => getDietAdherence(session?.token!),
+    enabled: !!session?.token,
+  });
+  useRefetchOnFocus(refetchEvaluations, Boolean(session?.token));
+  useRefetchOnFocus(refetchDiet, Boolean(session?.token));
+  useRefetchOnFocus(refetchAdherence, Boolean(session?.token));
   const addWaterMutation = useMutation({
     mutationFn: (amountMl: number) =>
       updateDietWater(session?.token!, amountMl),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["student-diet-current"] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["student-diet-current"] });
+      await queryClient.invalidateQueries({ queryKey: ["student-diet-adherence"] });
+    },
   });
 
   useEffect(() => {
@@ -367,6 +432,9 @@ export function DietDashboardScreen() {
     c: plan.targets.carbs,
     fat: plan.targets.fat,
   };
+  const weeklyDays = adherenceData?.days ?? [];
+  const weeklySummary = adherenceData?.summary;
+  const weeklyRange = adherenceData?.range;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000000' }}>
@@ -807,7 +875,10 @@ export function DietDashboardScreen() {
                     Aderência semanal
                   </AppText>
                   <AppText className="text-[11px] text-text-muted">
-                    Semana de 6–12 mai
+                    {formatAdherenceRange(
+                      weeklyRange?.startDate,
+                      weeklyRange?.endDate,
+                    )}
                   </AppText>
                 </View>
                 <View
@@ -819,9 +890,53 @@ export function DietDashboardScreen() {
                   }}
                 >
                   <AppText className="text-[13px] font-bold text-green-500">
-                    {adherence}% média
+                    {weeklySummary?.averageAdherence ?? adherence}% média
                   </AppText>
                 </View>
+              </View>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
+                <GoalPill
+                  label="Água"
+                  value={weeklySummary?.daysHitWaterGoal ?? 0}
+                  total={weeklyDays.length || 7}
+                  color="#22D3EE"
+                />
+                <GoalPill
+                  label="Calorias"
+                  value={weeklySummary?.daysHitCaloriesGoal ?? 0}
+                  total={weeklyDays.length || 7}
+                  color="#8B5CF6"
+                />
+                <GoalPill
+                  label="Proteínas"
+                  value={weeklySummary?.daysHitProteinGoal ?? 0}
+                  total={weeklyDays.length || 7}
+                  color="#38BDF8"
+                />
+              </View>
+              <View
+                style={{
+                  backgroundColor: "#18181B",
+                  borderRadius: 14,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  marginBottom: 16,
+                }}
+              >
+                <AppText className="text-[10px] font-bold uppercase tracking-[0.12em] text-text-muted">
+                  Refeições no horário
+                </AppText>
+                <AppText className="mt-2 text-[18px] font-bold text-text-main">
+                  {weeklySummary?.mealsOnTime ?? 0}
+                  <AppText className="text-[11px] font-normal text-text-muted">
+                    {" "}
+                    / {weeklySummary?.totalMealsLogged ?? 0} registros no prazo
+                  </AppText>
+                </AppText>
+                <AppText className="mt-2 text-[11px] leading-[17px] text-text-muted">
+                  No horário significa registrar a refeição com até 30 minutos
+                  antes ou depois do horário planejado.
+                </AppText>
               </View>
               <View
                 style={{
@@ -831,13 +946,13 @@ export function DietDashboardScreen() {
                   height: 60,
                 }}
               >
-                {ADHERENCE_DAYS.map((day, index) => {
-                  const val = ADHERENCE_MOCK[index];
+                {weeklyDays.map((day: DietAdherenceDay) => {
+                  const val = day.adherencePercent;
                   const color =
                     val >= 80 ? "#22C55E" : val >= 60 ? "#F59E0B" : "#FB7185";
                   return (
                     <View
-                      key={day}
+                      key={day.date}
                       style={{ alignItems: "center", flex: 1, gap: 5 }}
                     >
                       <View
@@ -850,80 +965,13 @@ export function DietDashboardScreen() {
                         }}
                       />
                       <AppText className="text-[9px] font-semibold text-text-muted">
-                        {day}
+                        {day.label}
                       </AppText>
                     </View>
                   );
                 })}
               </View>
             </View>
-            {[
-              {
-                lbl: "Refeições no horário",
-                val: "11/18",
-                pct: 61,
-                color: "#F59E0B",
-              },
-              {
-                lbl: "Proteína atingida",
-                val: "3/3 dias",
-                pct: 100,
-                color: "#38BDF8",
-              },
-              {
-                lbl: "Calorias na meta",
-                val: "2/3 dias",
-                pct: 67,
-                color: "#8B5CF6",
-              },
-              {
-                lbl: "Hidratação completa",
-                val: "1/3 dias",
-                pct: 33,
-                color: "#22D3EE",
-              },
-            ].map((item) => (
-              <View
-                key={item.lbl}
-                style={{
-                  backgroundColor: "#111111",
-                  borderWidth: 1,
-                  borderColor: "#1F1F1F",
-                  borderRadius: 14,
-                  marginBottom: 8,
-                  paddingHorizontal: 14,
-                  paddingVertical: 12,
-                }}
-              >
-                <View
-                  style={{
-                    alignItems: "center",
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    marginBottom: 8,
-                  }}
-                >
-                  <AppText className="text-[13px] font-semibold text-text-main">
-                    {item.lbl}
-                  </AppText>
-                  <AppText
-                    className="text-[13px] font-bold"
-                    style={{ color: item.color }}
-                  >
-                    {item.val}
-                  </AppText>
-                </View>
-                <View className="h-[5px] overflow-hidden rounded-full bg-bg-elevated">
-                  <View
-                    className="h-full rounded-full"
-                    style={{
-                      backgroundColor: item.color,
-                      width: `${item.pct}%`,
-                    }}
-                  />
-                </View>
-              </View>
-            ))}
           </Animated.View>
         ) : null}
         </ScrollView>

@@ -10,7 +10,7 @@ import {
   WarningCircle,
   CaretRight,
 } from 'phosphor-react-native';
-import { router, type Href, useLocalSearchParams } from 'expo-router';
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
@@ -20,6 +20,7 @@ import { AppScreen } from '@/src/shared/components/ui/AppScreen';
 import { AppButton } from '@/src/shared/components/ui/AppButton';
 import { AppText } from '@/src/shared/components/ui/AppText';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
+import { useRefetchOnFocus } from '@/src/shared/hooks/useRefetchOnFocus';
 
 import { createAssessmentDraft, useAssessmentsStore } from '../services/assessments.store';
 import { getEvaluationById } from '../api/assessments';
@@ -32,6 +33,8 @@ import {
   getStatusTone,
   cleanText,
   formatAssessmentDate,
+  formatAssessmentDateTime,
+  getResponsibleProfessionals,
 } from '../utils';
 
 /* ─── Task Row ───────────────────────────────────────────────────────────── */
@@ -109,13 +112,15 @@ function TaskRow({ icon: Icon, title, detail, done, urgent, neutral, disabled, o
 /* ─── Screen ─────────────────────────────────────────────────────────────── */
 
 export function AssessmentDetailScreen() {
+  const router = useRouter();
   const { assessmentId } = useLocalSearchParams<{ assessmentId: string }>();
   const { session } = useAuthStore();
-  const { data: assessment, isLoading, error } = useQuery({
+  const { data: assessment, isLoading, error, refetch } = useQuery({
     queryKey: ['assessment', assessmentId],
     queryFn: () => getEvaluationById(session?.token!, assessmentId!),
     enabled: !!session?.token && !!assessmentId,
   });
+  useRefetchOnFocus(refetch, Boolean(session?.token && assessmentId));
 
   const drafts = useAssessmentsStore((state) => state.drafts);
   const initializeDraft = useAssessmentsStore((state) => state.initializeDraft);
@@ -179,10 +184,13 @@ export function AssessmentDetailScreen() {
     : assessment.title;
 
   const description = cleanText(assessment.questionnaire.description || assessment.category);
+  const responsibleNames = getResponsibleProfessionals(assessment);
 
   const meta = [
-    assessment.professional?.name || 'Equipe Science Club',
-    assessment.due_date && `${isScheduled ? 'Liberação' : 'Prazo'}: ${formatAssessmentDate(assessment.due_date)}`,
+    responsibleNames.length > 0
+      ? responsibleNames.join(' • ')
+      : 'Equipe Science Club',
+    assessment.due_date && `${isScheduled ? 'Liberação' : 'Prazo'}: ${isScheduled ? formatAssessmentDateTime(assessment.due_date) : formatAssessmentDate(assessment.due_date)}`,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -354,17 +362,17 @@ export function AssessmentDetailScreen() {
             title="Parecer final"
             detail={
               assessment.result?.deliveredAt
-                ? `Entregue em ${assessment.result.deliveredAt}`
+                ? `Entregue em ${formatAssessmentDateTime(assessment.result.deliveredAt)}`
                 : isSubmitted
-                  ? 'Em análise pela equipe'
+                  ? 'Parecer pendente'
                   : 'Aguardando envio'
             }
             done={!!assessment.result?.deliveredAt}
             urgent={!assessment.result?.deliveredAt && isSubmitted}
             neutral={!assessment.result?.deliveredAt && !isSubmitted}
-            disabled={!assessment.result?.deliveredAt}
+            disabled={!assessment.result?.deliveredAt && !isSubmitted}
             onPress={() =>
-              assessment.result?.deliveredAt &&
+              (assessment.result?.deliveredAt || isSubmitted) &&
               router.push(`/(app)/assessments/${assessment.id}/result` as Href)
             }
           />

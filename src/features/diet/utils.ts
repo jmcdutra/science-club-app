@@ -18,7 +18,9 @@ export const emptyMacros: MacroValues = {
 };
 
 export function getTodayKey() {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Sao_Paulo',
+  }).format(new Date());
 }
 
 export function formatShortDate(dateKey: string) {

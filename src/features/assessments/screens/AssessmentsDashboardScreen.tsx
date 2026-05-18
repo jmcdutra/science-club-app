@@ -1,4 +1,4 @@
-import { router, type Href } from 'expo-router';
+import { type Href, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -10,6 +10,7 @@ import { AppText } from '@/src/shared/components/ui/AppText';
 import { NotificationsModal } from '@/src/shared/components/ui/NotificationsModal';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
 import { PageHeader } from '@/src/shared/components/layout/PageHeader';
+import { useRefetchOnFocus } from '@/src/shared/hooks/useRefetchOnFocus';
 
 import { AssessmentCard } from '../components/AssessmentCard';
 import { createAssessmentDraft, useAssessmentsStore } from '../services/assessments.store';
@@ -237,15 +238,17 @@ function EvolutionCard({ data }: { data: EvolutionData }) {
 /* ─── Screen ─────────────────────────────────────────────────────────────── */
 
 export function AssessmentsDashboardScreen() {
+  const router = useRouter();
   const { session } = useAuthStore();
   const drafts = useAssessmentsStore((state) => state.drafts);
   const [notifVisible, setNotifVisible] = useState(false);
 
-  const { data: assessments = [], isLoading } = useQuery({
+  const { data: assessments = [], isLoading, refetch } = useQuery({
     queryKey: ['assessments'],
     queryFn: () => getStudentEvaluations(session?.token!),
     enabled: !!session?.token,
   });
+  useRefetchOnFocus(refetch, Boolean(session?.token));
 
   const sortedAssessments = useMemo(
     () => [...assessments].sort((a, b) => STATUS_SORT[a.status] - STATUS_SORT[b.status]),

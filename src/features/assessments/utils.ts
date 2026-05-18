@@ -98,5 +98,34 @@ export function formatAssessmentDate(dateValue?: string) {
   if (!dateValue) return '';
   const date = new Date(dateValue);
   if (Number.isNaN(date.getTime())) return dateValue;
-  return date.toLocaleDateString('pt-BR');
+  return date.toLocaleDateString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+  });
+}
+
+export function formatAssessmentDateTime(dateValue?: string) {
+  if (!dateValue) return '';
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return dateValue;
+  const dateLabel = date.toLocaleDateString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+  });
+  const timeLabel = date.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/Sao_Paulo',
+  });
+  return `${dateLabel} · ${timeLabel}`;
+}
+
+export function getResponsibleProfessionals(assessment: {
+  professional?: { name?: string } | null;
+  workout_professional?: { name?: string } | null;
+  diet_professional?: { name?: string } | null;
+}) {
+  return [
+    assessment.workout_professional?.name,
+    assessment.diet_professional?.name,
+    assessment.professional?.name,
+  ].filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index);
 }

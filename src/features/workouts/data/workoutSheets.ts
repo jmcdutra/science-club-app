@@ -1,7 +1,10 @@
 export type WorkoutSet = {
   id: string;
+  label?: string;
+  type?: string;
   reps: string;
   weight?: string;
+  restSeconds?: number;
   duration?: string;
 };
 
@@ -23,6 +26,7 @@ export type WorkoutExercise = {
   description?: string;
   executionTips?: string[];
   videos?: WorkoutExerciseVideo[];
+  coverUrl?: string | null;
   previous: string;
   sets: WorkoutSet[];
 };

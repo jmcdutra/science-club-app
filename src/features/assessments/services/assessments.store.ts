@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import { mockAssessments } from '../data/assessments';
-import { Assessment, AssessmentAnswerValue, AssessmentDraft } from '../types';
+import { Assessment, AssessmentAnswerValue, AssessmentDraft, AssessmentUploadAsset } from '../types';
 
 type AssessmentsStore = {
   assessments: Assessment[];
@@ -9,7 +9,7 @@ type AssessmentsStore = {
   setAnswer: (assessmentId: string, fieldId: string, value: AssessmentAnswerValue) => void;
   toggleCheckboxAnswer: (assessmentId: string, fieldId: string, option: string) => void;
   setPhoto: (assessmentId: string, poseId: string, uri: string | null) => void;
-  setExam: (assessmentId: string, examId: string, uri: string | null) => void;
+  setExam: (assessmentId: string, examId: string, asset: AssessmentUploadAsset | string | null) => void;
   initializeDraft: (assessment: Assessment) => void;
   submitAssessment: (assessmentId: string) => void;
 };
@@ -115,7 +115,7 @@ export const useAssessmentsStore = create<AssessmentsStore>((set, get) => ({
         },
       };
     }),
-  setExam: (assessmentId, examId, uri) =>
+  setExam: (assessmentId, examId, asset) =>
     set((state) => {
       const draft = state.drafts[assessmentId];
       if (!draft || draft.submitted) return state;
@@ -127,7 +127,7 @@ export const useAssessmentsStore = create<AssessmentsStore>((set, get) => ({
             ...draft,
             exams: {
               ...draft.exams,
-              [examId]: uri,
+              [examId]: asset,
             },
           },
         },

@@ -72,6 +72,7 @@ export type MealLog = {
   foodLogs: FoodLog[];
   skippedReason?: string;
   updatedAt: string;
+  photoUrl?: string;
   photoUri?: string;
   photoName?: string;
 };
@@ -80,4 +81,36 @@ export type DietDayLog = {
   date: string;
   waterMl: number;
   mealLogs: MealLog[];
+};
+
+export type DietAdherenceDay = {
+  date: string;
+  label: string;
+  waterMl: number;
+  consumedCalories: number;
+  consumedProtein: number;
+  hitWaterGoal: boolean;
+  hitCaloriesGoal: boolean;
+  hitProteinGoal: boolean;
+  mealsOnTime: number;
+  totalMealsLogged: number;
+  adherencePercent: number;
+};
+
+export type DietAdherenceResponse = {
+  hasAccess: boolean;
+  reason: 'plan_excludes_diet' | 'diet_not_ready' | null;
+  range?: {
+    startDate: string;
+    endDate: string;
+  };
+  summary: {
+    daysHitWaterGoal: number;
+    daysHitCaloriesGoal: number;
+    daysHitProteinGoal: number;
+    mealsOnTime: number;
+    totalMealsLogged: number;
+    averageAdherence: number;
+  } | null;
+  days: DietAdherenceDay[];
 };

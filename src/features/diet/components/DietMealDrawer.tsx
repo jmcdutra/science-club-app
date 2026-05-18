@@ -31,7 +31,9 @@ import {
   getCurrentDiet,
   logDietFood,
   resetDietMeal,
+  saveDietMealPhoto,
   skipDietMeal,
+  uploadDietMealPhoto,
 } from "../api/diet";
 import { useDietStore, useSelectedDietDay } from "../services/diet.store";
 import type { DietFood, DietFoodSubstitution } from "../types";
@@ -493,6 +495,9 @@ function FoodLogModal({
       await queryClient.invalidateQueries({
         queryKey: ["student-diet-current"],
       });
+      await queryClient.invalidateQueries({
+        queryKey: ["student-diet-adherence"],
+      });
     },
   });
 
@@ -915,20 +920,26 @@ function DietMealDrawerContent({
   const consumeMutation = useMutation({
     mutationFn: (targetMealId: string) =>
       consumeDietMeal(session?.token!, targetMealId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["student-diet-current"] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["student-diet-current"] });
+      await queryClient.invalidateQueries({ queryKey: ["student-diet-adherence"] });
+    },
   });
   const skipMutation = useMutation({
     mutationFn: (targetMealId: string) =>
       skipDietMeal(session?.token!, targetMealId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["student-diet-current"] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["student-diet-current"] });
+      await queryClient.invalidateQueries({ queryKey: ["student-diet-adherence"] });
+    },
   });
   const resetMutation = useMutation({
     mutationFn: (targetMealId: string) =>
       resetDietMeal(session?.token!, targetMealId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["student-diet-current"] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["student-diet-current"] });
+      await queryClient.invalidateQueries({ queryKey: ["student-diet-adherence"] });
+    },
   });
 
   const baseMeal =
@@ -950,6 +961,19 @@ function DietMealDrawerContent({
   const mealPhotoUri = mealLog?.photoUri;
   const mealPhotoName = mealLog?.photoName;
 
+  async function persistMealPhotoIfNeeded() {
+    if (!session?.token || !mealPhotoUri) return;
+
+    const uploadResult = await uploadDietMealPhoto(session.token, mealPhotoUri, {
+      name: mealPhotoName,
+    });
+
+    await saveDietMealPhoto(session.token, meal.id, {
+      photoUrl: uploadResult.url,
+      photoName: mealPhotoName,
+    });
+  }
+
   async function chooseMealPhoto() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return;
@@ -969,6 +993,7 @@ function DietMealDrawerContent({
   }
 
   const handleMarkAll = async () => {
+    await persistMealPhotoIfNeeded();
     if (extraFoods.length > 0) {
       markMealConsumedLocal(meal.id);
     } else {
@@ -1181,7 +1206,7 @@ function DietMealDrawerContent({
           );
         })}
 
-        <Pressable
+        {/* <Pressable
           className="mt-2 items-center justify-center rounded-xl border border-dashed border-border-subtle px-3 py-3"
           onPress={() => setShowAddFood(true)}
         >
@@ -1191,7 +1216,7 @@ function DietMealDrawerContent({
               Adicionar alimento
             </AppText>
           </View>
-        </Pressable>
+        </Pressable> */}
       </ScrollView>
 
       <View

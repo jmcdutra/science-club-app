@@ -45,6 +45,7 @@ import { WebView } from "react-native-webview";
 
 import { AppButton } from "@/src/shared/components/ui/AppButton";
 import { AppText } from "@/src/shared/components/ui/AppText";
+import { resolveApiUrl } from "@/src/shared/api/apiClient";
 import { useAppTheme } from "@/src/shared/theme/appTheme";
 import { cn } from "@/src/shared/utils/cn";
 import { useAuthStore } from "@/src/features/auth/services/auth.store";
@@ -53,6 +54,7 @@ import { WorkoutNativeBottomSheet } from "../components/WorkoutNativeBottomSheet
 import {
   getWorkoutSession,
   getWorkoutSheet,
+  workoutSheets,
   type WorkoutSet,
   type WorkoutExerciseVideo,
 } from "../data/workoutSheets";
@@ -172,25 +174,32 @@ function formatPreviousHeadline(previous: string, sets: WorkoutSet[]) {
   return previous;
 }
 
-function getSetLabel(index: number) {
+function getSetLabel(set: WorkoutSet, index: number) {
+  if (set.label?.trim()) return set.label.trim();
   if (index === 0) return "Aquecimento";
   if (index === 1) return "Preparatório";
   return `Série ${index - 1}`;
 }
 
-function buildCoachRecommendation(sets: WorkoutSet[]) {
-  const warmups = sets.length > 0 ? 1 : 0;
-  const preparatory = sets.length > 1 ? 1 : 0;
-  const valid = Math.max(sets.length - warmups - preparatory, 1);
-  const repRange = sets[sets.length - 1]?.reps || sets[0]?.reps || "8-12";
+function buildExerciseRecommendation(exercise: {
+  executionTips?: string[];
+  cue?: string;
+  description?: string;
+}) {
+  const tips = (exercise.executionTips ?? [])
+    .map((tip) => tip.trim())
+    .filter(Boolean);
 
-  return `O coach recomendou ${warmups} série de aquecimento, ${preparatory} preparatória${preparatory === 1 ? "" : "s"} e ${valid} válida${valid === 1 ? "" : "s"} na faixa de ${repRange} repetições.`;
+  if (tips.length > 0) return tips.join("\n");
+  if (exercise.cue?.trim()) return exercise.cue.trim();
+  if (exercise.description?.trim()) return exercise.description.trim();
+  return "Siga a orientação montada pela equipe para esta execução.";
 }
 
 function normalizeVideoEmbedUrl(video: WorkoutExerciseVideo) {
-  if (video.embedUrl) return video.embedUrl;
-
   if (video.provider === "own") return video.url;
+
+  if (video.embedUrl) return video.embedUrl;
 
   if (video.provider === "youtube") {
     const match = video.url.match(
@@ -212,6 +221,38 @@ function normalizeVideoEmbedUrl(video: WorkoutExerciseVideo) {
   }
 
   return undefined;
+}
+
+function buildVideoHtml(url: string) {
+  return `<!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+      <style>
+        html, body {
+          margin: 0;
+          padding: 0;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          background: #000;
+        }
+
+        video {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          background: #000;
+        }
+      </style>
+    </head>
+    <body>
+      <video controls playsinline webkit-playsinline preload="metadata">
+        <source src="${url.replace(/"/g, "&quot;")}" type="video/mp4" />
+      </video>
+    </body>
+  </html>`;
 }
 
 const MUSCLE_COLOR: Record<string, string> = {
@@ -289,9 +330,16 @@ function ExerciseHelpSheet({
     id: string;
     title: string;
     url: string;
+    provider: WorkoutExerciseVideo["provider"];
     embedUrl?: string;
   }[];
 }) {
+  const exerciseRecommendation = buildExerciseRecommendation({
+    executionTips: exercise.executionTips,
+    cue: exercise.cue,
+    description: exercise.description,
+  });
+
   return (
     <WorkoutNativeBottomSheet
       visible={visible}
@@ -360,99 +408,111 @@ function ExerciseHelpSheet({
           </View>
         </View>
 
-        <ScrollView
-          bounces={false}
-          contentContainerStyle={{
-            paddingHorizontal: 20,
-            paddingTop: 16,
-            paddingBottom: 12,
-            gap: 16,
-          }}
-          showsVerticalScrollIndicator={false}
-        >
-          <View>
-            <AppText className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
-              Execução
-            </AppText>
-            <AppText className="text-sm leading-6 text-text-muted">
-              {exercise.description ?? exercise.cue}
-            </AppText>
-          </View>
-
-          <View>
-            <AppText className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
-              Recomendação
-            </AppText>
-            <AppText className="text-sm leading-6 text-text-muted">
-              {buildCoachRecommendation(exercise.sets)}
-            </AppText>
-          </View>
-
-          {(exercise.executionTips ?? []).length > 0 ? (
+        <View style={{ flexShrink: 1, minHeight: 0, maxHeight: "100%" }}>
+          <ScrollView
+            bounces={false}
+            contentContainerStyle={{
+              paddingHorizontal: 20,
+              paddingTop: 16,
+              paddingBottom: 12,
+              gap: 16,
+            }}
+            showsVerticalScrollIndicator={false}
+          >
             <View>
-              <AppText className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
-                Pontos-chave
+              <AppText className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
+                Execução
               </AppText>
-              <View className="gap-3">
-                {(exercise.executionTips ?? []).map((tip) => (
-                  <View key={tip} className="flex-row gap-3">
-                    <View className="mt-[7px] h-1.5 w-1.5 rounded-full bg-brand-primary" />
-                    <AppText className="flex-1 text-sm leading-6 text-text-muted">
-                      {tip}
-                    </AppText>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
+              <AppText className="text-sm leading-6 text-text-muted">
+                {exercise.description ?? exercise.cue}
+              </AppText>
+              {helpVideos.length > 0 ? (
+                <View className="mt-4 gap-3">
+                  {helpVideos.map((video) => {
+                    if (video.provider === "own") {
+                      const directVideoUrl = resolveApiUrl(video.url);
 
-          {helpVideos.length > 0 ? (
-            <View>
-              <AppText className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
-                Vídeo
-              </AppText>
-              <View className="gap-3">
-                {helpVideos.map((video) => {
-                  if (video.embedUrl) {
+                      if (!directVideoUrl) return null;
+
+                      return (
+                        <View
+                          key={video.id}
+                          className="overflow-hidden rounded-[18px] border border-border-subtle bg-black"
+                        >
+                          <View className="border-b border-white/10 px-3 py-2">
+                            <AppText className="text-xs font-semibold text-white/80">
+                              {video.title}
+                            </AppText>
+                          </View>
+                          <View className="h-52">
+                            <WebView
+                              allowsFullscreenVideo
+                              allowsInlineMediaPlayback
+                              javaScriptEnabled
+                              mediaPlaybackRequiresUserAction={false}
+                              originWhitelist={["*"]}
+                              scrollEnabled={false}
+                              source={{ html: buildVideoHtml(directVideoUrl) }}
+                            />
+                          </View>
+                        </View>
+                      );
+                    }
+
+                    if (video.embedUrl) {
+                      return (
+                        <View
+                          key={video.id}
+                          className="overflow-hidden rounded-[18px] border border-border-subtle bg-black"
+                        >
+                          <View className="border-b border-white/10 px-3 py-2">
+                            <AppText className="text-xs font-semibold text-white/80">
+                              {video.title}
+                            </AppText>
+                          </View>
+                          <View className="h-52">
+                            <WebView
+                              allowsFullscreenVideo
+                              allowsInlineMediaPlayback
+                              javaScriptEnabled
+                              mediaPlaybackRequiresUserAction={false}
+                              source={{ uri: video.embedUrl }}
+                            />
+                          </View>
+                        </View>
+                      );
+                    }
+
                     return (
-                      <View
+                      <Pressable
                         key={video.id}
-                        className="overflow-hidden rounded-[18px] border border-border-subtle bg-black"
+                        className="flex-row items-center justify-between rounded-[14px] border border-border-subtle px-4 py-3"
+                        onPress={() => {
+                          const resolvedVideoUrl = resolveApiUrl(video.url);
+                          if (resolvedVideoUrl) Linking.openURL(resolvedVideoUrl);
+                        }}
                       >
-                        <View className="border-b border-white/10 px-3 py-2">
-                          <AppText className="text-xs font-semibold text-white/80">
-                            {video.title}
-                          </AppText>
-                        </View>
-                        <View className="h-52">
-                          <WebView
-                            allowsFullscreenVideo
-                            javaScriptEnabled
-                            mediaPlaybackRequiresUserAction={false}
-                            source={{ uri: video.embedUrl }}
-                          />
-                        </View>
-                      </View>
+                        <AppText className="text-sm font-semibold text-text-main">
+                          {video.title}
+                        </AppText>
+                        <LinkSimple color="#A78BFA" size={15} weight="bold" />
+                      </Pressable>
                     );
-                  }
-
-                  return (
-                    <Pressable
-                      key={video.id}
-                      className="flex-row items-center justify-between rounded-[14px] border border-border-subtle px-4 py-3"
-                      onPress={() => Linking.openURL(video.url)}
-                    >
-                      <AppText className="text-sm font-semibold text-text-main">
-                        {video.title}
-                      </AppText>
-                      <LinkSimple color="#A78BFA" size={15} weight="bold" />
-                    </Pressable>
-                  );
-                })}
-              </View>
+                  })}
+                </View>
+              ) : null}
             </View>
-          ) : null}
-        </ScrollView>
+
+            <View>
+              <AppText className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
+                Recomendação
+              </AppText>
+              <AppText className="text-sm leading-6 text-text-muted">
+                {exerciseRecommendation}
+              </AppText>
+            </View>
+          </ScrollView>
+        </View>
 
         <View
           style={{
@@ -740,11 +800,12 @@ function ExitWorkoutPrompt({
 }
 
 export function WorkoutSessionScreen() {
-  const { id, sessionId, exerciseId } = useLocalSearchParams<{
+  const { id, sessionId: routeSessionId, exerciseId } = useLocalSearchParams<{
     id: string;
     sessionId?: string;
     exerciseId?: string;
   }>();
+  const workoutId = id ?? "";
   const { isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { session: authSession } = useAuthStore();
@@ -754,18 +815,24 @@ export function WorkoutSessionScreen() {
     enabled: !!authSession?.token,
   });
   const remoteWorkout =
-    currentWorkoutData?.workout && currentWorkoutData.workout.id === id
+    currentWorkoutData?.workout && currentWorkoutData.workout.id === workoutId
       ? currentWorkoutData.workout
       : null;
-  const localWorkoutSheet = getWorkoutSheet(id);
+  const hasLocalFallback = workoutSheets.some((item) => item.id === workoutId);
+  const localWorkoutSheet = hasLocalFallback ? getWorkoutSheet(workoutId) : null;
   const session = remoteWorkout
-    ? remoteWorkout.sessions.find((s) => s.id === sessionId) ||
+    ? remoteWorkout.sessions.find((s) => s.id === routeSessionId) ||
       remoteWorkout.sessions[0]
-    : getWorkoutSession(id, sessionId);
+    : localWorkoutSheet
+      ? getWorkoutSession(workoutId, routeSessionId)
+      : null;
+  if (!session) return null;
+  const currentSessionId = session.id;
   const sessionExercises = session.exercises.filter(Boolean);
   const localSession =
-    localWorkoutSheet.sessions.find((item) => item.id === session.id) ??
-    localWorkoutSheet.sessions[0];
+    localWorkoutSheet?.sessions.find((item) => item.id === session.id) ??
+    localWorkoutSheet?.sessions[0] ??
+    null;
   const initialIndex = Math.max(
     0,
     sessionExercises.findIndex((e) => e.id === exerciseId),
@@ -801,9 +868,9 @@ export function WorkoutSessionScreen() {
   const [startedAt, setStartedAt] = useState<string | null>(null);
 
   const { data: remoteProgress } = useQuery({
-    queryKey: ["student-workout-progress", id, session.id],
-    queryFn: () => getSessionProgress(authSession?.token!, id, session.id),
-    enabled: !!authSession?.token && !!id && !!session.id,
+    queryKey: ["student-workout-progress", workoutId, currentSessionId],
+    queryFn: () => getSessionProgress(authSession?.token!, workoutId, currentSessionId),
+    enabled: !!authSession?.token && !!workoutId && !!currentSessionId,
   });
   const exercise = sessionExercises[currentIndex] ?? sessionExercises[0];
   const sessionDisplayTitle = getWorkoutDisplayTitle(session);
@@ -812,10 +879,12 @@ export function WorkoutSessionScreen() {
   );
   const sessionImageIndex = Math.max(
     0,
-    localWorkoutSheet.sessions.findIndex((item) => item.id === session.id),
+    localWorkoutSheet?.sessions.findIndex((item) => item.id === session.id) ?? 0,
   );
   const sessionImage =
-    SESSION_IMAGES[sessionImageIndex % SESSION_IMAGES.length];
+    exercise.coverUrl
+      ? { uri: resolveApiUrl(exercise.coverUrl) ?? exercise.coverUrl }
+      : SESSION_IMAGES[sessionImageIndex % SESSION_IMAGES.length];
   const getExerciseSets = (
     item: (typeof sessionExercises)[number],
   ): WorkoutSet[] => setsByExercise[item.id] ?? item.sets;
@@ -844,10 +913,20 @@ export function WorkoutSessionScreen() {
   const helpVideos = exerciseVideos.map((video) => ({
     id: video.id,
     title: video.title,
-    url: video.url,
+    provider: video.provider,
+    url: resolveApiUrl(video.url) ?? video.url,
     embedUrl: normalizeVideoEmbedUrl(video),
   }));
+  const exerciseRecommendation = buildExerciseRecommendation({
+    executionTips: exerciseExecutionTips,
+    cue: exercise.cue,
+    description: exerciseDescription,
+  });
   const completedSets = completedByExercise[exercise.id] ?? 0;
+  const currentSetRestSeconds =
+    activeExerciseSets[
+      Math.min(completedSets, Math.max(activeExerciseSets.length - 1, 0))
+    ]?.restSeconds ?? exercise.restSeconds;
   const restRunning = restLeft > 0;
   const totalSets = sessionExercises.reduce(
     (sum, item) => sum + getExerciseSets(item).length,
@@ -918,9 +997,9 @@ export function WorkoutSessionScreen() {
   }, [remoteProgress]);
 
   useEffect(() => {
-    if (!authSession?.token || !id || !session.id) return;
+    if (!authSession?.token || !workoutId || !currentSessionId) return;
     const timer = setInterval(() => {
-      saveSessionProgress(authSession.token, id, session.id, {
+      saveSessionProgress(authSession.token, workoutId, currentSessionId, {
         completed_sets: completedByExercise,
         weight_overrides: weightOverrides,
         reps_overrides: repsOverrides,
@@ -934,8 +1013,8 @@ export function WorkoutSessionScreen() {
     return () => clearInterval(timer);
   }, [
     authSession?.token,
-    id,
-    session.id,
+    workoutId,
+    currentSessionId,
     completedByExercise,
     weightOverrides,
     repsOverrides,
@@ -970,10 +1049,14 @@ export function WorkoutSessionScreen() {
   function markSet() {
     const next = Math.min(activeExerciseSets.length, completedSets + 1);
     setCompletedByExercise((c) => ({ ...c, [exercise.id]: next }));
+    const completedSet = activeExerciseSets[Math.max(0, next - 1)];
     const nextRest =
-      next < activeExerciseSets.length ? exercise.restSeconds : 0;
+      next < activeExerciseSets.length
+        ? completedSet?.restSeconds ?? exercise.restSeconds
+        : 0;
     setRestTotal(nextRest);
     setRestLeft(nextRest);
+    setRestElapsedSeconds(0);
     setSetEditor(null);
   }
 
@@ -1021,46 +1104,45 @@ export function WorkoutSessionScreen() {
     if (!setEditor) return;
     const nw = weightDraft ? formatWeight(weightDraft) : "";
     const nr = repsDraft.trim();
-    setWeightOverrides((cur) => {
-      const next = { ...cur };
-      sessionExercises.forEach((item, ii) => {
-        if (scope === "single" && ii !== setEditor.exerciseIndex) return;
-        if (scope === "exercise-next" && ii !== setEditor.exerciseIndex) return;
-        if (scope === "workout-next" && ii < setEditor.exerciseIndex) return;
-        getExerciseSets(item).forEach((set, si) => {
-          if (!set.weight) return;
-          if (scope === "single" && si !== setEditor.setIndex) return;
-          if (
-            (scope === "exercise-next" || scope === "workout-next") &&
-            ii === setEditor.exerciseIndex &&
-            si < setEditor.setIndex
-          )
-            return;
-          if (nw) next[weightKey(item.id, set.id)] = nw;
-        });
+    const nextWeightOverrides = { ...weightOverrides };
+    const nextRepsOverrides = { ...repsOverrides };
+
+    sessionExercises.forEach((item, ii) => {
+      if (scope === "single" && ii !== setEditor.exerciseIndex) return;
+      if (scope === "exercise-next" && ii !== setEditor.exerciseIndex) return;
+      if (scope === "workout-next" && ii < setEditor.exerciseIndex) return;
+
+      getExerciseSets(item).forEach((set, si) => {
+        if (scope === "single" && si !== setEditor.setIndex) return;
+        if (
+          (scope === "exercise-next" || scope === "workout-next") &&
+          ii === setEditor.exerciseIndex &&
+          si < setEditor.setIndex
+        ) {
+          return;
+        }
+
+        if (nw) nextWeightOverrides[weightKey(item.id, set.id)] = nw;
+        if (nr) nextRepsOverrides[repsKey(item.id, set.id)] = nr;
       });
-      return next;
     });
-    setRepsOverrides((cur) => {
-      const next = { ...cur };
-      if (!nr) return next;
-      sessionExercises.forEach((item, ii) => {
-        if (scope === "single" && ii !== setEditor.exerciseIndex) return;
-        if (scope === "exercise-next" && ii !== setEditor.exerciseIndex) return;
-        if (scope === "workout-next" && ii < setEditor.exerciseIndex) return;
-        getExerciseSets(item).forEach((set, si) => {
-          if (scope === "single" && si !== setEditor.setIndex) return;
-          if (
-            (scope === "exercise-next" || scope === "workout-next") &&
-            ii === setEditor.exerciseIndex &&
-            si < setEditor.setIndex
-          )
-            return;
-          next[repsKey(item.id, set.id)] = nr;
-        });
-      });
-      return next;
-    });
+
+    setWeightOverrides(nextWeightOverrides);
+    setRepsOverrides(nextRepsOverrides);
+
+    if (authSession?.token) {
+      void saveSessionProgress(authSession.token, workoutId, currentSessionId, {
+        completed_sets: completedByExercise,
+        weight_overrides: nextWeightOverrides,
+        reps_overrides: nextRepsOverrides,
+        elapsed_seconds: elapsed,
+        rest_elapsed_seconds: restElapsedSeconds,
+        rest_left_seconds: restLeft,
+        started_at: startedAt || new Date().toISOString(),
+        finished_at: workoutFinished ? new Date().toISOString() : null,
+      }).catch(() => null);
+    }
+
     setSetEditor(null);
   }
 
@@ -1084,7 +1166,7 @@ export function WorkoutSessionScreen() {
     setRestLeft(0);
     setRestTotal(0);
     router.push(
-      `/(app)/workouts/${id}/finish?sessionId=${session.id}&elapsed=${elapsed}&sets=${completedSetsTotal}&totalSets=${totalSets}&exercises=${completedExercisesTotal}&progressions=${progressionsTotal}` as Href,
+        `/(app)/workouts/${workoutId}/finish?sessionId=${currentSessionId}&elapsed=${elapsed}&sets=${completedSetsTotal}&totalSets=${totalSets}&exercises=${completedExercisesTotal}&progressions=${progressionsTotal}` as Href,
     );
   }
 
@@ -1284,7 +1366,7 @@ export function WorkoutSessionScreen() {
                   {exercise.name}
                 </AppText>
                 <AppText className="mt-2 text-[13px] text-text-muted">
-                  {exercise.muscle} · Descanso {exercise.restSeconds}s
+                  {exercise.muscle} · Descanso {currentSetRestSeconds}s
                 </AppText>
               </View>
             </View>
@@ -1548,7 +1630,7 @@ export function WorkoutSessionScreen() {
                           : "text-text-main",
                       )}
                     >
-                      {getSetLabel(index)}
+                      {getSetLabel(set, index)}
                     </AppText>
 
                     <View className="ml-2 flex-1 flex-row items-center justify-end gap-3">
@@ -1680,7 +1762,7 @@ export function WorkoutSessionScreen() {
           setRestElapsedSeconds(0);
         }}
         seconds={restLeft}
-        total={restTotal || exercise.restSeconds}
+        total={restTotal || currentSetRestSeconds}
         visible={restRunning}
       />
 
