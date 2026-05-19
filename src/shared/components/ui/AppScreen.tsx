@@ -1,4 +1,4 @@
-import { PropsWithChildren } from 'react';
+import { PropsWithChildren, type ReactNode, type Ref } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -16,6 +16,8 @@ type AppScreenProps = PropsWithChildren<ScrollViewProps> & {
   keyboard?: boolean;
   hideGlow?: boolean;
   contentClassName?: string;
+  floatingChildren?: ReactNode;
+  scrollRef?: Ref<ScrollView>;
 };
 
 export function AppScreen({
@@ -23,6 +25,8 @@ export function AppScreen({
   scroll = true,
   keyboard = true,
   hideGlow = false,
+  floatingChildren,
+  scrollRef,
   className,
   contentClassName,
   ...props
@@ -36,6 +40,7 @@ export function AppScreen({
       decelerationRate="fast"
       keyboardShouldPersistTaps="handled"
       overScrollMode="never"
+      ref={scrollRef}
       showsVerticalScrollIndicator={false}
       {...props}
     >
@@ -60,6 +65,7 @@ export function AppScreen({
           style={styles.keyboard}
         >
           {content}
+          {floatingChildren}
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>

@@ -1,9 +1,9 @@
-import { ArrowLeft, Camera, PaperPlaneTilt } from 'phosphor-react-native';
+import { ArrowLeft, ArrowUp, Camera, PaperPlaneTilt } from 'phosphor-react-native';
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, Pressable, View, type ScrollView } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { AppScreen } from '@/src/shared/components/ui/AppScreen';
 import { AppButton } from '@/src/shared/components/ui/AppButton';
@@ -16,14 +16,18 @@ import { createAssessmentDraft, useAssessmentsStore } from '../services/assessme
 import { getQuestionnaireProgress, getRequiredMissing, cleanText } from '../utils';
 import { getEvaluationById } from '../api/assessments';
 
+const QUESTIONS_PER_STEP = 10;
+
 export function AssessmentQuestionnaireScreen() {
   const router = useRouter();
+  const scrollRef = useRef<ScrollView>(null);
   const { assessmentId } = useLocalSearchParams<{ assessmentId: string }>();
   const { session } = useAuthStore();
   const drafts = useAssessmentsStore((state) => state.drafts);
   const setAnswer = useAssessmentsStore((state) => state.setAnswer);
   const toggleCheckboxAnswer = useAssessmentsStore((state) => state.toggleCheckboxAnswer);
   const initializeDraft = useAssessmentsStore((state) => state.initializeDraft);
+  const [questionStep, setQuestionStep] = useState(0);
 
   const { data: assessment, isLoading, refetch } = useQuery({
     queryKey: ['assessment', assessmentId],
@@ -57,8 +61,24 @@ export function AssessmentQuestionnaireScreen() {
 
   const hasPhotos = assessment.questionnaire.image_questions.length > 0;
   const hasExams = assessment.questionnaire.attachment_questions.length > 0;
+  const questions = assessment.questionnaire.questions;
+  const totalSteps = Math.max(1, Math.ceil(questions.length / QUESTIONS_PER_STEP));
+  const currentStep = Math.min(questionStep, totalSteps - 1);
+  const visibleQuestions = questions.slice(currentStep * QUESTIONS_PER_STEP, (currentStep + 1) * QUESTIONS_PER_STEP);
+  const stepStart = currentStep * QUESTIONS_PER_STEP + 1;
+  const stepEnd = Math.min((currentStep + 1) * QUESTIONS_PER_STEP, questions.length);
+
+  const scrollToTop = () => {
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  };
 
   const handleNext = () => {
+    if (currentStep < totalSteps - 1) {
+      setQuestionStep((step) => Math.min(step + 1, totalSteps - 1));
+      requestAnimationFrame(scrollToTop);
+      return;
+    }
+
     if (hasPhotos) {
       router.push(`/(app)/assessments/${assessment.id}/photos` as Href);
     } else if (hasExams) {
@@ -68,16 +88,44 @@ export function AssessmentQuestionnaireScreen() {
     }
   };
 
-  const nextLabel = hasPhotos
+  const nextLabel = currentStep < totalSteps - 1
+    ? `Próximas ${Math.min(QUESTIONS_PER_STEP, questions.length - stepEnd)} perguntas`
+    : hasPhotos
     ? 'Continuar para fotos'
     : hasExams
       ? 'Continuar para exames'
       : 'Revisar e enviar';
 
-  const NextIcon = hasPhotos ? Camera : PaperPlaneTilt;
+  const NextIcon = hasPhotos && currentStep === totalSteps - 1 ? Camera : PaperPlaneTilt;
 
   return (
-    <AppScreen contentClassName="px-6 pb-8 pt-5" keyboard>
+    <AppScreen
+      contentClassName="px-6 pb-8 pt-5"
+      keyboard
+      scrollRef={scrollRef}
+      floatingChildren={
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Voltar ao topo"
+          onPress={scrollToTop}
+          style={{
+            position: 'absolute',
+            right: 18,
+            bottom: 28,
+            width: 46,
+            height: 46,
+            borderRadius: 99,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#8B5CF6',
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.18)',
+          }}
+        >
+          <ArrowUp color="#FFFFFF" size={20} weight="bold" />
+        </Pressable>
+      }
+    >
       {/* ── Back bar ── */}
       <View
         style={{
@@ -168,6 +216,23 @@ export function AssessmentQuestionnaireScreen() {
               />
             ))}
           </View>
+          {questions.length > QUESTIONS_PER_STEP ? (
+            <View
+              style={{
+                marginTop: 14,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <AppText style={{ fontSize: 12, fontWeight: '700', color: '#A78BFA' }}>
+                Etapa {currentStep + 1} de {totalSteps}
+              </AppText>
+              <AppText style={{ fontSize: 12, color: '#666666' }}>
+                Perguntas {stepStart}-{stepEnd}
+              </AppText>
+            </View>
+          ) : null}
         </View>
       </Animated.View>
 
@@ -176,7 +241,7 @@ export function AssessmentQuestionnaireScreen() {
         entering={FadeInDown.delay(80).duration(400)}
         style={{ gap: 10, marginBottom: 24, opacity: isSubmitted ? 0.6 : 1 }}
       >
-        {assessment.questionnaire.questions.map((field) => (
+        {visibleQuestions.map((field) => (
           <AssessmentFieldRenderer
             key={field.id}
             field={field as any}
@@ -190,7 +255,21 @@ export function AssessmentQuestionnaireScreen() {
       </Animated.View>
 
       {/* ── CTA ── */}
-      <Animated.View entering={FadeInDown.delay(160).duration(400)}>
+      <Animated.View entering={FadeInDown.delay(160).duration(400)} style={{ gap: 10 }}>
+        {currentStep > 0 ? (
+          <AppButton
+            variant="secondary"
+            fullWidth
+            onPress={() => {
+              setQuestionStep((step) => Math.max(0, step - 1));
+              requestAnimationFrame(scrollToTop);
+            }}
+          >
+            <AppText style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>
+              Perguntas anteriores
+            </AppText>
+          </AppButton>
+        ) : null}
         <AppButton
           variant="primary"
           fullWidth
@@ -200,6 +279,7 @@ export function AssessmentQuestionnaireScreen() {
           <AppText style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{nextLabel}</AppText>
         </AppButton>
       </Animated.View>
+
     </AppScreen>
   );
 }

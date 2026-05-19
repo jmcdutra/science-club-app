@@ -34,7 +34,9 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ],
       "package": "com.anonymous.scienceclubapp"
     },
@@ -64,6 +66,13 @@
         {
           "photosPermission": "Permita que o Science Club acesse suas fotos para anexar o registro do treino.",
           "cameraPermission": "Permita que o Science Club use a camera para registrar a finalizacao do treino."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Permita que o Science Club acesse sua localização para registrar a rota do treino.",
+          "locationWhenInUsePermission": "Permita que o Science Club acesse sua localização para registrar a rota do treino."
         }
       ],
       "expo-notifications",

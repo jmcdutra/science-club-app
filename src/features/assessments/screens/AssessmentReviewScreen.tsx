@@ -1,5 +1,5 @@
-import { ArrowLeft, CheckCircle, PaperPlaneTilt, WarningCircle } from 'phosphor-react-native';
-import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
+import { ArrowLeft, CheckCircle, PaperPlaneTilt, PencilSimple, WarningCircle } from 'phosphor-react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -12,6 +12,7 @@ import { useAuthStore } from '@/src/features/auth/services/auth.store';
 import { useRefetchOnFocus } from '@/src/shared/hooks/useRefetchOnFocus';
 
 import { createAssessmentDraft, useAssessmentsStore } from '../services/assessments.store';
+import { AssessmentFieldRenderer } from '../components/AssessmentFieldRenderer';
 import { getEvaluationById, submitEvaluation, uploadFile } from '../api/assessments';
 import {
   getExamProgress,
@@ -26,11 +27,14 @@ export function AssessmentReviewScreen() {
   const { session } = useAuthStore();
   const queryClient = useQueryClient();
   const drafts = useAssessmentsStore((state) => state.drafts);
+  const setAnswer = useAssessmentsStore((state) => state.setAnswer);
+  const toggleCheckboxAnswer = useAssessmentsStore((state) => state.toggleCheckboxAnswer);
   const submitDraft = useAssessmentsStore((state) => state.submitAssessment);
   const initializeDraft = useAssessmentsStore((state) => state.initializeDraft);
 
   const [isUploading, setIsUploading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
 
   const { data: assessment, isLoading, refetch } = useQuery({
     queryKey: ['assessment', assessmentId],
@@ -214,27 +218,79 @@ export function AssessmentReviewScreen() {
                       borderBottomColor: '#1A1A1A',
                       paddingBottom: 12,
                     }}
-                  >
-                    <AppText
-                      style={{
-                        fontSize: 10,
-                        fontWeight: '700',
-                        textTransform: 'uppercase',
-                        letterSpacing: 2,
-                        color: '#555555',
-                        marginBottom: 4,
-                      }}
                     >
-                      {q.label}
-                    </AppText>
-                    <AppText
-                      style={{
-                        fontSize: 14,
-                        color: ansText ? '#CCCCCC' : '#3A3A3A',
-                      }}
-                    >
-                      {ansText ?? 'Não respondido'}
-                    </AppText>
+                    {editingQuestionId === qId && !isSubmitted ? (
+                      <View style={{ gap: 10 }}>
+                        <AssessmentFieldRenderer
+                          field={q as any}
+                          value={draft.answers[qId]}
+                          onChange={(value) => setAnswer(assessment.id, qId, value)}
+                          onToggleOption={(option) => toggleCheckboxAnswer(assessment.id, qId, option)}
+                        />
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => setEditingQuestionId(null)}
+                          style={{
+                            alignSelf: 'flex-end',
+                            borderRadius: 999,
+                            backgroundColor: 'rgba(139,92,246,0.16)',
+                            paddingHorizontal: 14,
+                            paddingVertical: 8,
+                          }}
+                        >
+                          <AppText style={{ fontSize: 12, fontWeight: '800', color: '#C4B5FD' }}>
+                            Concluir edição
+                          </AppText>
+                        </Pressable>
+                      </View>
+                    ) : (
+                      <>
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                          <View style={{ flex: 1 }}>
+                            <AppText
+                              style={{
+                                fontSize: 10,
+                                fontWeight: '700',
+                                textTransform: 'uppercase',
+                                letterSpacing: 2,
+                                color: '#555555',
+                                marginBottom: 4,
+                              }}
+                            >
+                              {q.label}
+                            </AppText>
+                            <AppText
+                              style={{
+                                fontSize: 14,
+                                color: ansText ? '#CCCCCC' : '#3A3A3A',
+                                lineHeight: 20,
+                              }}
+                            >
+                              {ansText ?? 'Não respondido'}
+                            </AppText>
+                          </View>
+                          {!isSubmitted ? (
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel={`Editar ${q.label}`}
+                              onPress={() => setEditingQuestionId(qId)}
+                              style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 99,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: 'rgba(139,92,246,0.12)',
+                                borderWidth: 1,
+                                borderColor: 'rgba(139,92,246,0.28)',
+                              }}
+                            >
+                              <PencilSimple color="#A78BFA" size={15} weight="bold" />
+                            </Pressable>
+                          ) : null}
+                        </View>
+                      </>
+                    )}
                   </View>
                 );
               })}

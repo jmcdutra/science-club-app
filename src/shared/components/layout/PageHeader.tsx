@@ -1,10 +1,13 @@
 import { Bell } from "phosphor-react-native";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Pressable, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { AppText } from "@/src/shared/components/ui/AppText";
 import { useAppTheme } from "@/src/shared/theme/appTheme";
+import { useAuthStore } from "@/src/features/auth/services/auth.store";
+import { getMyNotifications } from "@/src/features/notifications/api/notifications";
 
 const WEEKDAY_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MONTHS_SHORT = [
@@ -34,10 +37,18 @@ export function PageHeader({
   onNotificationPress,
 }: PageHeaderProps) {
   const { isDark } = useAppTheme();
+  const { session } = useAuthStore();
   const dateLabel = useMemo(() => {
     const now = new Date();
     return `${WEEKDAY_SHORT[now.getDay()]}, ${now.getDate()} ${MONTHS_SHORT[now.getMonth()]}`;
   }, []);
+  const notificationsQuery = useQuery({
+    queryKey: ["app-notifications", session?.studentId],
+    queryFn: () => getMyNotifications(session?.token!),
+    enabled: Boolean(session?.token && onNotificationPress),
+    staleTime: 30_000,
+  });
+  const unreadCount = (notificationsQuery.data ?? []).filter((item) => !item.read).length;
 
   return (
     <Animated.View
@@ -89,6 +100,28 @@ export function PageHeader({
         }}
       >
         <Bell size={16} color={isDark ? "#888888" : "#6B7280"} />
+        {unreadCount > 0 ? (
+          <View
+            style={{
+              position: "absolute",
+              top: -5,
+              right: -5,
+              minWidth: 18,
+              height: 18,
+              borderRadius: 99,
+              backgroundColor: "#EF4444",
+              borderWidth: 2,
+              borderColor: isDark ? "#090909" : "#FFFFFF",
+              alignItems: "center",
+              justifyContent: "center",
+              paddingHorizontal: 4,
+            }}
+          >
+            <AppText style={{ fontSize: 10, fontWeight: "800", color: "#FFFFFF" }}>
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </AppText>
+          </View>
+        ) : null}
       </Pressable>
     </Animated.View>
   );

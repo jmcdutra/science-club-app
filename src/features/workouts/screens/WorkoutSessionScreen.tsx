@@ -426,6 +426,23 @@ function ExerciseHelpSheet({
               <AppText className="text-sm leading-6 text-text-muted">
                 {exercise.description ?? exercise.cue}
               </AppText>
+              {exercise.executionTips?.length ? (
+                <View className="mt-4 rounded-[16px] border border-brand-primary/20 bg-brand-primary/10 px-4 py-3">
+                  <AppText className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-brand-secondary">
+                    Orientações
+                  </AppText>
+                  <View className="gap-2">
+                    {exercise.executionTips.map((tip, index) => (
+                      <View key={`${tip}-${index}`} className="flex-row gap-2">
+                        <View className="mt-2 h-1.5 w-1.5 rounded-full bg-brand-secondary" />
+                        <AppText className="flex-1 text-sm leading-5 text-text-main">
+                          {tip}
+                        </AppText>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
               {helpVideos.length > 0 ? (
                 <View className="mt-4 gap-3">
                   {helpVideos.map((video) => {
@@ -917,11 +934,6 @@ export function WorkoutSessionScreen() {
     url: resolveApiUrl(video.url) ?? video.url,
     embedUrl: normalizeVideoEmbedUrl(video),
   }));
-  const exerciseRecommendation = buildExerciseRecommendation({
-    executionTips: exerciseExecutionTips,
-    cue: exercise.cue,
-    description: exerciseDescription,
-  });
   const completedSets = completedByExercise[exercise.id] ?? 0;
   const currentSetRestSeconds =
     activeExerciseSets[

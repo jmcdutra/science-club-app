@@ -27,6 +27,9 @@ export default function AppLayout() {
       <Stack.Screen name="profile/edit-contact" />
       <Stack.Screen name="profile/preferences" />
       <Stack.Screen name="profile/documents" />
+      <Stack.Screen name="rankings/[rankingId]" />
+      <Stack.Screen name="run/active" options={{ animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="run/summary" options={{ animation: 'fade' }} />
     </Stack>
   );
 }

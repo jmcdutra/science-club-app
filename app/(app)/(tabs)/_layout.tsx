@@ -14,9 +14,12 @@ export default function AppTabsLayout() {
     >
       <Tabs.Screen name="home" options={{ title: 'Início' }} />
       <Tabs.Screen name="workouts" options={{ title: 'Treinos' }} />
+      <Tabs.Screen name="run" options={{ title: 'Run' }} />
       <Tabs.Screen name="diet" options={{ title: 'Dieta' }} />
-      <Tabs.Screen name="assessments" options={{ title: 'Avaliação' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Perfil' }} />
+      <Tabs.Screen name="more" options={{ title: 'Mais' }} />
+      <Tabs.Screen name="ranking" options={{ title: 'Ranking', href: null }} />
+      <Tabs.Screen name="assessments" options={{ title: 'Avaliação', href: null }} />
+      <Tabs.Screen name="profile" options={{ title: 'Perfil', href: null }} />
     </Tabs>
   );
 }
