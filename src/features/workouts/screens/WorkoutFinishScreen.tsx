@@ -6,26 +6,23 @@ import {
   Flame,
   ImageSquare,
   InstagramLogo,
-  ShareNetwork,
   TrendUp,
   Clock,
 } from "phosphor-react-native";
-import { router, useLocalSearchParams } from "expo-router";
-import { type ReactNode, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { Redirect, type Href, useLocalSearchParams } from "expo-router";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Animated,
   Alert,
+  BackHandler,
   Image,
   Pressable,
   ScrollView,
   TextInput,
-  useWindowDimensions,
   View,
 } from "react-native";
 import { captureRef } from "react-native-view-shot";
 
-import { AppButton } from "@/src/shared/components/ui/AppButton";
 import { AppCard } from "@/src/shared/components/ui/AppCard";
 import { AppLottie } from "@/src/shared/components/ui/AppLottie";
 import { AppScreen } from "@/src/shared/components/ui/AppScreen";
@@ -34,7 +31,12 @@ import { useAppTheme } from "@/src/shared/theme/appTheme";
 import { useAuthStore } from "@/src/features/auth/services/auth.store";
 
 import { getWorkoutSession } from "../data/workoutSheets";
-import { getCurrentWorkout } from "../api/workouts";
+import {
+  getCurrentWorkout,
+  getSessionProgress,
+  saveSessionProgress,
+  uploadWorkoutProgressPhoto,
+} from "../api/workouts";
 
 function formatSeconds(total: number) {
   const m = Math.floor(total / 60);
@@ -42,37 +44,34 @@ function formatSeconds(total: number) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function formatDecimal(value: number) {
-  return value.toLocaleString("pt-BR", {
-    minimumFractionDigits: 1,
+function parseWeightValue(value?: string) {
+  const normalized = String(value || "").replace(",", ".");
+  const match = normalized.match(/\d+(\.\d+)?/);
+  return match ? Number(match[0]) : 0;
+}
+
+function parseRepsValue(value?: string) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return 0;
+  const rangeMatch = normalized.match(/(\d+)\s*-\s*(\d+)/);
+  if (rangeMatch) {
+    return Math.round((Number(rangeMatch[1]) + Number(rangeMatch[2])) / 2);
+  }
+  const match = normalized.match(/\d+/);
+  return match ? Number(match[0]) : 0;
+}
+
+function formatKg(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 0,
     maximumFractionDigits: 1,
-  });
+  }).format(value);
 }
 
 type NativeShareModule = {
   Social?: { INSTAGRAM_STORIES?: string };
   open: (options: Record<string, unknown>) => Promise<unknown>;
   shareSingle: (options: Record<string, unknown>) => Promise<unknown>;
-};
-
-type RatingValue = "easy" | "good" | "beast";
-
-const RATING_OPTIONS: {
-  value: RatingValue;
-  label: string;
-  emoji: string;
-}[] = [
-  { value: "easy", label: "Fácil", emoji: "😴" },
-  { value: "good", label: "Deu pra fazer", emoji: "💪" },
-  { value: "beast", label: "Muito difícil", emoji: "🔥" },
-];
-
-type BurstParticle = {
-  dx: number;
-  lift: number;
-  drift: number;
-  rotate: number;
-  scale: number;
 };
 
 function getNativeShareModule() {
@@ -131,19 +130,16 @@ function StatTile({
 
 export function WorkoutFinishScreen() {
   const { isDark } = useAppTheme();
-  const { height: windowHeight } = useWindowDimensions();
+  const queryClient = useQueryClient();
   const composedShareRef = useRef<View>(null);
   const overlayStickerRef = useRef<View>(null);
-  const celebrationOverlayRef = useRef<View>(null);
-  const { id, sessionId, elapsed, sets, totalSets, exercises, progressions } =
+  const { id, sessionId, elapsed, sets, exercises } =
     useLocalSearchParams<{
       id: string;
       sessionId?: string;
       elapsed?: string;
       sets?: string;
-      totalSets?: string;
       exercises?: string;
-      progressions?: string;
     }>();
   const { session: authSession } = useAuthStore();
   const { data: currentWorkoutData } = useQuery({
@@ -159,54 +155,257 @@ export function WorkoutFinishScreen() {
     ? remoteWorkout.sessions.find((candidate) => candidate.id === sessionId) ||
       remoteWorkout.sessions[0]
     : getWorkoutSession(id, sessionId);
+  const resolvedSessionId = sessionId || session.id;
+  const { data: currentProgress } = useQuery({
+    queryKey: ["student-workout-progress", id, resolvedSessionId],
+    queryFn: () =>
+      getSessionProgress(authSession?.token!, id, resolvedSessionId),
+    enabled: !!authSession?.token && !!id && !!resolvedSessionId,
+  });
   const sessionExercises = session.exercises.filter(Boolean);
 
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [comment, setComment] = useState("");
-  const [rating, setRating] = useState<RatingValue | null>(null);
   const [submitted, setSubmitted] = useState(false);
-  const [burstEmoji, setBurstEmoji] = useState<string | null>(null);
-  const [burstParticles, setBurstParticles] = useState<BurstParticle[]>([]);
-  const [burstOrigin, setBurstOrigin] = useState<{
-    x: number;
-    y: number;
+  const [lastSubmittedState, setLastSubmittedState] = useState<{
+    comment: string;
+    photoUri: string | null;
   } | null>(null);
-  const burstProgress = useRef(new Animated.Value(0)).current;
+  const [pendingRedirect, setPendingRedirect] = useState<Href | null>(null);
+  const autoFinalizeAttemptedRef = useRef(false);
 
   const elapsedSeconds = Number(elapsed ?? 0);
   const completedSets = Number(sets ?? 0);
-  const prescribedSets = Number(totalSets ?? completedSets);
   const completedExercises = Number(exercises ?? sessionExercises.length);
-  const progressionCount = Number(progressions ?? 0);
   const instagramStoriesAppId =
     Constants.expoConfig?.extra?.instagramStoriesAppId;
 
-  const estimatedVolumeTons = useMemo(() => {
-    const derived =
-      completedSets * 1.62 +
-      completedExercises * 0.48 +
-      progressionCount * 0.35;
-    return Math.max(3.2, Number(derived.toFixed(1)));
-  }, [completedExercises, completedSets, progressionCount]);
+  const sessionHistory =
+    currentWorkoutData?.historyBySession?.[resolvedSessionId] ?? [];
+  const previousHistoryEntry = sessionHistory[0] ?? null;
 
-  const prLabels = useMemo(() => {
-    if (progressionCount <= 0) return [];
-    return sessionExercises
-      .slice(0, progressionCount)
-      .map((exercise) => exercise.name);
-  }, [progressionCount, sessionExercises]);
+  const currentMetrics = (() => {
+    const exercises = sessionExercises.map((exercise) => {
+      const completedSetsForExercise = Math.min(
+        exercise.sets.length,
+        Math.max(0, Number(currentProgress?.completed_sets?.[exercise.id] || 0)),
+      );
 
-  const shareText = useMemo(
-    () =>
-      `${session.title} no Science Club — ${completedSets}/${prescribedSets} séries, ${formatSeconds(elapsedSeconds)}, ${formatDecimal(estimatedVolumeTons)} ton.`,
-    [
-      completedSets,
-      elapsedSeconds,
-      estimatedVolumeTons,
-      prescribedSets,
-      session.title,
-    ],
-  );
+      let totalVolumeKg = 0;
+      let totalReps = 0;
+      let bestSetKg = 0;
+
+      const sets = exercise.sets.map((set, setIndex) => {
+        const setKey = `${exercise.id}:${set.id}`;
+        const performedWeightKg = parseWeightValue(
+          currentProgress?.weight_overrides?.[setKey] || set.weight || "",
+        );
+        const performedReps = parseRepsValue(
+          currentProgress?.reps_overrides?.[setKey] || set.reps || "",
+        );
+        const completed = setIndex < completedSetsForExercise;
+        const volumeKg = completed ? performedWeightKg * performedReps : 0;
+
+        if (completed) {
+          totalVolumeKg += volumeKg;
+          totalReps += performedReps;
+          if (performedWeightKg > bestSetKg) bestSetKg = performedWeightKg;
+        }
+
+        return {
+          setId: set.id,
+          performedWeightKg,
+          performedReps,
+          completed,
+          volumeKg,
+        };
+      });
+
+      return {
+        exerciseId: exercise.id,
+        exerciseName: exercise.name,
+        completedSets: completedSetsForExercise,
+        totalVolumeKg,
+        totalReps,
+        bestSetKg,
+        sets,
+      };
+    });
+
+    return {
+      totalVolumeKg: exercises.reduce(
+        (sum, exercise) => sum + exercise.totalVolumeKg,
+        0,
+      ),
+      totalReps: exercises.reduce(
+        (sum, exercise) => sum + exercise.totalReps,
+        0,
+      ),
+      validSets: exercises.reduce(
+        (sum, exercise) => sum + exercise.completedSets,
+        0,
+      ),
+      durationMinutes: Math.round(elapsedSeconds / 60),
+      exercises,
+    };
+  })();
+
+  const comparisonSummary = (() => {
+    const previousVolumeKg = Number(previousHistoryEntry?.volumeKg || 0);
+    const previousReps = Number(previousHistoryEntry?.totalReps || 0);
+    const previousDurationMinutes = Number(
+      previousHistoryEntry?.durationMinutes || 0,
+    );
+
+    return {
+      previousVolumeKg,
+      previousReps,
+      previousDurationMinutes,
+      volumeDeltaKg: currentMetrics.totalVolumeKg - previousVolumeKg,
+      repsDelta: currentMetrics.totalReps - previousReps,
+      durationDelta:
+        currentMetrics.durationMinutes - previousDurationMinutes,
+    };
+  })();
+
+  const exerciseComparisons = (() => {
+    const previousByExercise = new Map(
+      (previousHistoryEntry?.exercises || []).map((exercise) => [
+        exercise.exerciseId,
+        exercise,
+      ]),
+    );
+
+    return currentMetrics.exercises.map((exercise) => {
+      const previous = previousByExercise.get(exercise.exerciseId);
+      return {
+        exerciseId: exercise.exerciseId,
+        exerciseName: exercise.exerciseName,
+        currentVolumeKg: exercise.totalVolumeKg,
+        previousVolumeKg: Number(previous?.totalVolumeKg || 0),
+        currentReps: exercise.totalReps,
+        previousReps: Number(previous?.totalReps || 0),
+        currentBestSetKg: exercise.bestSetKg,
+        previousBestSetKg: Number(
+          previous?.sets?.reduce(
+            (best, set) =>
+              Number(set.performedWeightKg || 0) > best
+                ? Number(set.performedWeightKg || 0)
+                : best,
+            0,
+          ) || 0,
+        ),
+      };
+    });
+  })();
+
+  const hasUnsavedPostFinishChanges =
+    submitted &&
+    !!lastSubmittedState &&
+    (lastSubmittedState.comment !== comment.trim() ||
+      lastSubmittedState.photoUri !== photoUri);
+
+  const saveWorkoutMutation = useMutation({
+    mutationFn: async () => {
+      if (!authSession?.token) {
+        throw new Error("Sua sessão expirou. Entre novamente para salvar.");
+      }
+      if (!id || !resolvedSessionId) {
+        throw new Error("Não foi possível identificar este treino.");
+      }
+
+      let photoUrl = "";
+      let photoName = currentProgress?.photo_name || "";
+
+      if (photoUri) {
+        photoName = photoUri.split("/").pop() || "treino.jpg";
+        const uploadResult = await uploadWorkoutProgressPhoto(authSession.token, photoUri, {
+          name: photoName,
+        });
+        photoUrl = uploadResult.url;
+      } else {
+        photoUrl = currentProgress?.photo_url || "";
+      }
+
+      await saveSessionProgress(authSession.token, id, resolvedSessionId, {
+        elapsed_seconds: elapsedSeconds,
+        finished_at: new Date().toISOString(),
+        observation: comment.trim(),
+        photo_name: photoName,
+        photo_url: photoUrl,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["student-workout-current"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["student-workout-progress", id, resolvedSessionId],
+      });
+      setLastSubmittedState({
+        comment: comment.trim(),
+        photoUri,
+      });
+      setSubmitted(true);
+    },
+    onError: (error) => {
+      Alert.alert(
+        "Erro ao salvar treino",
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel salvar o treino agora.",
+      );
+    },
+  });
+
+  useEffect(() => {
+    if (!currentProgress) return;
+
+    if (!lastSubmittedState) {
+      setComment(String(currentProgress.observation || ""));
+      setLastSubmittedState({
+        comment: String(currentProgress.observation || "").trim(),
+        photoUri: null,
+      });
+    }
+
+    if (currentProgress.finished_at) {
+      setSubmitted(true);
+      autoFinalizeAttemptedRef.current = true;
+    }
+  }, [currentProgress, lastSubmittedState]);
+
+  useEffect(() => {
+    if (!authSession?.token || !id || !resolvedSessionId) return;
+    if (submitted || saveWorkoutMutation.isPending || autoFinalizeAttemptedRef.current) {
+      return;
+    }
+
+    autoFinalizeAttemptedRef.current = true;
+    void saveWorkoutMutation.mutateAsync().catch(() => {
+      autoFinalizeAttemptedRef.current = false;
+    });
+  }, [
+    authSession?.token,
+    id,
+    resolvedSessionId,
+    saveWorkoutMutation,
+    submitted,
+  ]);
+
+  useEffect(() => {
+    const goToWorkoutsRoot = () => {
+      setPendingRedirect("/(app)/(tabs)/workouts" as Href);
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      goToWorkoutsRoot,
+    );
+
+    return () => subscription.remove();
+  }, []);
 
   async function pickCamera() {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -287,8 +486,13 @@ export function WorkoutFinishScreen() {
       return;
     }
     const stickerBase64 = await captureOverlaySticker();
+    const cardUri = await captureComposedCard();
     if (!stickerBase64) {
       Alert.alert("Erro", "Não foi possível gerar o overlay.");
+      return;
+    }
+    if (!cardUri) {
+      Alert.alert("Erro", "Não foi possível gerar a imagem do treino.");
       return;
     }
     if (
@@ -304,6 +508,7 @@ export function WorkoutFinishScreen() {
     try {
       await nativeShare.shareSingle({
         appId: instagramStoriesAppId,
+        backgroundImage: cardUri,
         backgroundBottomColor: "#000000",
         backgroundTopColor: "#000000",
         social: nativeShare.Social?.INSTAGRAM_STORIES ?? "instagramstories",
@@ -314,163 +519,25 @@ export function WorkoutFinishScreen() {
     }
   }
 
-  async function shareOtherApps() {
-    const nativeShare = getNativeShareModule();
-    if (!nativeShare) {
-      Alert.alert(
-        "Build nativa necessária",
-        "Compartilhamento com imagem requer build nativa.",
-      );
+  async function saveWorkout() {
+    if (!hasUnsavedPostFinishChanges) {
+      setPendingRedirect("/(app)/(tabs)/workouts" as Href);
       return;
     }
-    const cardUri = await captureComposedCard();
-    if (!cardUri) {
-      Alert.alert("Erro", "Não foi possível gerar a imagem.");
+    if (saveWorkoutMutation.isPending) return;
+    try {
+      await saveWorkoutMutation.mutateAsync();
+    } catch {
       return;
     }
-    await nativeShare.open({
-      failOnCancel: false,
-      message: shareText,
-      title: "Treino finalizado",
-      type: "image/png",
-      url: cardUri,
-    });
   }
 
-  function saveWorkout() {
-    if (submitted) {
-      router.replace("/(app)/(tabs)/workouts");
-      return;
-    }
-    setSubmitted(true);
-  }
-
-  function buildBurstParticles() {
-    return Array.from({ length: 18 }, (_, index) => {
-      const ratio = index / 17;
-      const side = ratio * 2 - 1;
-      return {
-        dx: side * (86 + Math.random() * 124),
-        lift: 104 + Math.random() * 76,
-        drift: -26 + Math.random() * 52,
-        rotate: -28 + Math.random() * 56,
-        scale: 0.8 + Math.random() * 0.45,
-      };
-    });
-  }
-
-  function triggerEmojiBurst(
-    nextEmoji: string,
-    nextValue: RatingValue,
-    pageX: number,
-    pageY: number,
-  ) {
-    setRating(nextValue);
-    celebrationOverlayRef.current?.measureInWindow((x, y) => {
-      setBurstOrigin({
-        x: pageX - x,
-        y: pageY - y,
-      });
-      setBurstParticles(buildBurstParticles());
-      setBurstEmoji(nextEmoji);
-      burstProgress.stopAnimation();
-      burstProgress.setValue(0);
-      Animated.sequence([
-        Animated.timing(burstProgress, {
-          duration: 1450,
-          toValue: 1,
-          useNativeDriver: true,
-        }),
-        Animated.timing(burstProgress, {
-          duration: 80,
-          toValue: 0,
-          useNativeDriver: true,
-        }),
-      ]).start(({ finished }) => {
-        if (finished) {
-          setBurstEmoji(null);
-          setBurstOrigin(null);
-          setBurstParticles([]);
-        }
-      });
-    });
+  if (pendingRedirect) {
+    return <Redirect href={pendingRedirect} />;
   }
 
   return (
     <AppScreen hideGlow keyboard scroll={false}>
-      <View
-        ref={celebrationOverlayRef}
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          top: 0,
-          bottom: 0,
-          zIndex: 30,
-        }}
-      >
-        {burstEmoji && burstOrigin
-          ? burstParticles.map((particle, index) => (
-              <Animated.Text
-                key={`${burstEmoji}-${index}`}
-                style={{
-                  position: "absolute",
-                  left: burstOrigin.x,
-                  top: burstOrigin.y,
-                  fontSize: 28,
-                  opacity: burstProgress.interpolate({
-                    inputRange: [0, 0.08, 0.82, 1],
-                    outputRange: [0, 1, 1, 0],
-                  }),
-                  transform: [
-                    { translateX: -14 },
-                    { translateY: -14 },
-                    {
-                      translateX: burstProgress.interpolate({
-                        inputRange: [0, 0.2, 1],
-                        outputRange: [
-                          0,
-                          particle.dx * 0.42,
-                          particle.dx + particle.drift,
-                        ],
-                      }),
-                    },
-                    {
-                      translateY: burstProgress.interpolate({
-                        inputRange: [0, 0.18, 1],
-                        outputRange: [
-                          0,
-                          -particle.lift,
-                          windowHeight - burstOrigin.y + 120,
-                        ],
-                      }),
-                    },
-                    {
-                      rotate: burstProgress.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ["0deg", `${particle.rotate}deg`],
-                      }),
-                    },
-                    {
-                      scale: burstProgress.interpolate({
-                        inputRange: [0, 0.12, 1],
-                        outputRange: [
-                          0.4,
-                          particle.scale,
-                          particle.scale * 0.9,
-                        ],
-                      }),
-                    },
-                  ],
-                }}
-              >
-                {burstEmoji}
-              </Animated.Text>
-            ))
-          : null}
-      </View>
-
       <View
         ref={overlayStickerRef}
         collapsable={false}
@@ -503,9 +570,9 @@ export function WorkoutFinishScreen() {
             </View>
             <View className="items-center">
               <AppText className="text-3xl font-semibold text-white">
-                {formatDecimal(estimatedVolumeTons)}
+                {formatKg(currentMetrics.totalVolumeKg)}
               </AppText>
-              <AppText className="text-xs text-white/70">toneladas</AppText>
+              <AppText className="text-xs text-white/70">kg volume</AppText>
             </View>
           </View>
           <AppText className="mt-6 text-3xl font-semibold text-white">
@@ -560,9 +627,9 @@ export function WorkoutFinishScreen() {
             </View>
             <View className="items-center">
               <AppText className="text-3xl font-semibold text-text-main">
-                {formatDecimal(estimatedVolumeTons)}
+                {formatKg(currentMetrics.totalVolumeKg)}
               </AppText>
-              <AppText className="text-xs text-text-muted">toneladas</AppText>
+              <AppText className="text-xs text-text-muted">kg volume</AppText>
             </View>
           </View>
           <AppText className="mt-5 text-3xl font-semibold text-text-main">
@@ -623,8 +690,8 @@ export function WorkoutFinishScreen() {
               />
               <StatTile
                 label="Volume"
-                value={formatDecimal(estimatedVolumeTons)}
-                unit="ton"
+                value={formatKg(currentMetrics.totalVolumeKg)}
+                unit="kg"
                 icon={<TrendUp size={14} color="#22C55E" weight="bold" />}
                 iconBackground="rgba(34,197,94,0.12)"
                 iconColor="#22C55E"
@@ -645,79 +712,171 @@ export function WorkoutFinishScreen() {
               />
             </View>
 
-            {prLabels.length > 0 ? (
-              <AppCard
-                className="mb-[18px] flex-row items-center gap-3 px-3.5 py-3"
-                style={{
-                  backgroundColor: "rgba(251,191,36,0.08)",
-                  borderColor: "rgba(251,191,36,0.2)",
-                }}
-              >
-                <View className="h-10 w-10 items-center justify-center rounded-full bg-[#FBBF24]/15">
-                  <TrendUp size={18} color="#FBBF24" weight="bold" />
-                </View>
-                <View className="flex-1">
-                  <AppText className="text-[13px] font-bold text-[#FBBF24]">
-                    Novo recorde pessoal!
-                  </AppText>
-                  <AppText className="mt-0.5 text-[11px] leading-[17px] text-[#FCD56F]">
-                    {prLabels.join(" · ")}
-                  </AppText>
+            <View className="mb-[18px] gap-3">
+              <AppText className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">
+                Comparativo com o último treino
+              </AppText>
+
+              <AppCard className="rounded-[22px] px-4 py-4">
+                <View className="gap-4">
+                  {[
+                    {
+                      label: "Volume",
+                      current: currentMetrics.totalVolumeKg,
+                      previous: comparisonSummary.previousVolumeKg,
+                      suffix: "kg",
+                    },
+                    {
+                      label: "Repetições",
+                      current: currentMetrics.totalReps,
+                      previous: comparisonSummary.previousReps,
+                      suffix: "reps",
+                    },
+                    {
+                      label: "Duração",
+                      current: currentMetrics.durationMinutes,
+                      previous: comparisonSummary.previousDurationMinutes,
+                      suffix: "min",
+                    },
+                  ].map((metric) => {
+                    const maxValue = Math.max(metric.current, metric.previous, 1);
+                    const delta = metric.current - metric.previous;
+                    return (
+                      <View key={metric.label}>
+                        <View className="mb-2 flex-row items-center justify-between">
+                          <AppText className="text-[12px] font-semibold text-text-main">
+                            {metric.label}
+                          </AppText>
+                          <AppText
+                            className="text-[11px] font-semibold"
+                            style={{
+                              color:
+                                delta > 0
+                                  ? "#22C55E"
+                                  : delta < 0
+                                    ? "#F59E0B"
+                                    : "#A1A1AA",
+                            }}
+                          >
+                            {delta > 0 ? "+" : ""}
+                            {formatKg(Math.abs(delta))} {metric.suffix}
+                          </AppText>
+                        </View>
+                        <View className="gap-2">
+                          <View>
+                            <View className="mb-1 flex-row items-center justify-between">
+                              <AppText className="text-[10px] text-text-muted">
+                                Hoje
+                              </AppText>
+                              <AppText className="text-[10px] font-semibold text-text-main">
+                                {formatKg(metric.current)} {metric.suffix}
+                              </AppText>
+                            </View>
+                            <View className="h-2 overflow-hidden rounded-full bg-bg-surface">
+                              <View
+                                className="h-full rounded-full"
+                                style={{
+                                  width: `${(metric.current / maxValue) * 100}%`,
+                                  backgroundColor: "#22C55E",
+                                }}
+                              />
+                            </View>
+                          </View>
+                          <View>
+                            <View className="mb-1 flex-row items-center justify-between">
+                              <AppText className="text-[10px] text-text-muted">
+                                Último
+                              </AppText>
+                              <AppText className="text-[10px] font-semibold text-text-main">
+                                {formatKg(metric.previous)} {metric.suffix}
+                              </AppText>
+                            </View>
+                            <View className="h-2 overflow-hidden rounded-full bg-bg-surface">
+                              <View
+                                className="h-full rounded-full"
+                                style={{
+                                  width: `${(metric.previous / maxValue) * 100}%`,
+                                  backgroundColor: "#8B5CF6",
+                                }}
+                              />
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
                 </View>
               </AppCard>
-            ) : null}
 
-            <View className="mb-[18px]">
-              <AppText className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">
-                Como foi o treino?
-              </AppText>
-              <View className="flex-row gap-2">
-                {RATING_OPTIONS.map(({ value, label, emoji }) => {
-                  const active = rating === value;
-                  return (
-                    <Pressable
-                      key={value}
-                      accessibilityRole="button"
-                      className="flex-1"
-                      onPress={(event) =>
-                        triggerEmojiBurst(
-                          emoji,
-                          value,
-                          event.nativeEvent.pageX,
-                          event.nativeEvent.pageY,
-                        )
-                      }
-                    >
-                      <AppCard
-                        active={active}
-                        className="min-h-[116px] items-center justify-center px-3 py-4"
-                      >
-                        <View
-                          className="mb-2 h-10 w-10 items-center justify-center rounded-full"
-                          style={{
-                            backgroundColor: active
-                              ? "rgba(139,92,246,0.14)"
-                              : isDark
-                                ? "#0A0A0A"
-                                : "#EFEFF1",
-                          }}
-                        >
-                          <AppText className="text-[22px]">{emoji}</AppText>
+              <AppCard className="rounded-[22px] px-4 py-4">
+                <AppText className="mb-3 text-[12px] font-semibold text-text-main">
+                  Comparativo por exercício
+                </AppText>
+                <View className="gap-3">
+                  {exerciseComparisons.map((exercise) => {
+                    const maxVolume = Math.max(
+                      exercise.currentVolumeKg,
+                      exercise.previousVolumeKg,
+                      1,
+                    );
+                    return (
+                      <View key={exercise.exerciseId}>
+                        <View className="mb-1.5 flex-row items-start justify-between gap-3">
+                          <AppText className="flex-1 text-[12px] font-semibold leading-[18px] text-text-main">
+                            {exercise.exerciseName}
+                          </AppText>
+                          <View className="rounded-full bg-bg-surface px-2.5 py-1">
+                            <AppText className="text-[9px] font-semibold text-text-muted">
+                              Carga máx. {formatKg(exercise.currentBestSetKg)} /{" "}
+                              {formatKg(exercise.previousBestSetKg)} kg
+                            </AppText>
+                          </View>
                         </View>
-                        <AppText
-                          className={
-                            active
-                              ? "text-center text-[12px] font-bold text-brand-secondary"
-                              : "text-center text-[12px] font-bold text-text-muted"
-                          }
-                        >
-                          {label}
-                        </AppText>
-                      </AppCard>
-                    </Pressable>
-                  );
-                })}
-              </View>
+                        <View className="gap-2">
+                          <View className="flex-row items-center gap-2">
+                            <View className="w-12">
+                              <AppText className="text-[10px] text-text-muted">
+                                Hoje
+                              </AppText>
+                            </View>
+                            <View className="h-2 flex-1 overflow-hidden rounded-full bg-bg-surface">
+                              <View
+                                className="h-full rounded-full"
+                                style={{
+                                  width: `${(exercise.currentVolumeKg / maxVolume) * 100}%`,
+                                  backgroundColor: "#22C55E",
+                                }}
+                              />
+                            </View>
+                            <AppText className="w-20 text-right text-[10px] font-semibold text-text-main">
+                              {formatKg(exercise.currentVolumeKg)} kg
+                            </AppText>
+                          </View>
+                          <View className="flex-row items-center gap-2">
+                            <View className="w-12">
+                              <AppText className="text-[10px] text-text-muted">
+                                Último
+                              </AppText>
+                            </View>
+                            <View className="h-2 flex-1 overflow-hidden rounded-full bg-bg-surface">
+                              <View
+                                className="h-full rounded-full"
+                                style={{
+                                  width: `${(exercise.previousVolumeKg / maxVolume) * 100}%`,
+                                  backgroundColor: "#8B5CF6",
+                                }}
+                              />
+                            </View>
+                            <AppText className="w-20 text-right text-[10px] font-semibold text-text-main">
+                              {formatKg(exercise.previousVolumeKg)} kg
+                            </AppText>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </AppCard>
             </View>
 
             <View className="mb-[18px]">
@@ -821,44 +980,85 @@ export function WorkoutFinishScreen() {
                 >
                   <CheckCircle size={18} color="#A78BFA" weight="fill" />
                   <AppText className="text-[13px] font-bold text-brand-secondary">
-                    Treino salvo com sucesso
+                    Registro do treino salvo com sucesso
                   </AppText>
                 </View>
 
-                <AppButton
-                  fullWidth
-                  leftIcon={
-                    <InstagramLogo size={18} color="#111111" weight="bold" />
-                  }
+                <Pressable
+                  accessibilityRole="button"
+                  className="min-h-[56px] flex-row items-center justify-center gap-2 rounded-[18px] px-4"
                   onPress={shareInstagramStories}
-                  variant="secondary"
+                  style={{
+                    backgroundColor: "#E11D48",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.12)",
+                    shadowColor: "rgba(225,29,72,0.30)",
+                    shadowOpacity: 1,
+                    shadowRadius: 18,
+                    shadowOffset: { width: 0, height: 12 },
+                    elevation: 10,
+                  }}
                 >
-                  Instagram Stories
-                </AppButton>
-
-                <AppButton
-                  fullWidth
-                  leftIcon={
-                    <ShareNetwork size={17} color="#A78BFA" weight="bold" />
-                  }
-                  onPress={shareOtherApps}
-                  variant="secondary"
-                >
-                  Compartilhar
-                </AppButton>
+                  <InstagramLogo size={18} color="#FFFFFF" weight="bold" />
+                  <AppText className="text-[13px] font-bold text-white">
+                    Compartilhar no Instagram
+                  </AppText>
+                </Pressable>
               </View>
             ) : null}
           </View>
         </ScrollView>
 
         <View className="border-t border-border-subtle bg-bg-base px-5 pb-7 pt-4">
-          <AppButton
-            fullWidth
-            leftIcon={<CheckCircle size={18} color="#FFFFFF" weight="fill" />}
+          <Pressable
+            accessibilityRole="button"
+            disabled={saveWorkoutMutation.isPending || !submitted}
             onPress={saveWorkout}
+            className="min-h-[52px] flex-row items-center justify-center gap-2.5 overflow-hidden rounded-[14px] px-4"
+            style={({ pressed }) => ({
+              width: "100%",
+              backgroundColor:
+                saveWorkoutMutation.isPending || !submitted
+                  ? "#1A1A1A"
+                  : "#8B5CF6",
+              borderWidth: 1,
+              borderColor:
+                saveWorkoutMutation.isPending || !submitted
+                  ? "transparent"
+                  : "rgba(255,255,255,0.12)",
+              opacity: saveWorkoutMutation.isPending || !submitted ? 0.5 : 1,
+              transform: [{ scale: pressed && !(saveWorkoutMutation.isPending || !submitted) ? 0.97 : 1 }],
+              shadowColor:
+                saveWorkoutMutation.isPending || !submitted
+                  ? "transparent"
+                  : "rgba(139,92,246,0.30)",
+              shadowOpacity: saveWorkoutMutation.isPending || !submitted ? 0 : 1,
+              shadowRadius: saveWorkoutMutation.isPending || !submitted ? 0 : 18,
+              shadowOffset: { width: 0, height: 12 },
+              elevation: saveWorkoutMutation.isPending || !submitted ? 0 : 8,
+            })}
           >
-            {submitted ? "Voltar aos treinos" : "Salvar treino"}
-          </AppButton>
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: 0,
+                height: 1,
+                backgroundColor: "rgba(255,255,255,0.18)",
+                opacity: saveWorkoutMutation.isPending || !submitted ? 0 : 1,
+              }}
+            />
+            <CheckCircle size={18} color="#FFFFFF" weight="fill" />
+            <AppText className="text-center text-[15px] font-semibold text-white">
+              {!submitted
+                ? "Finalizando treino..."
+                : hasUnsavedPostFinishChanges
+                  ? "Enviar considerações"
+                  : "Voltar aos treinos"}
+            </AppText>
+          </Pressable>
         </View>
       </View>
     </AppScreen>

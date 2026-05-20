@@ -30,6 +30,7 @@ import Svg, {
 import { AppText } from "@/src/shared/components/ui/AppText";
 import { AppLottie } from "@/src/shared/components/ui/AppLottie";
 import { NotificationsModal } from "@/src/shared/components/ui/NotificationsModal";
+import { PendingFormAccessModal } from "@/src/shared/components/ui/PendingFormAccessModal";
 import { PageHeader } from "@/src/shared/components/layout/PageHeader";
 import { resolveApiUrl } from "@/src/shared/api/apiClient";
 import { useRefetchOnFocus } from "@/src/shared/hooks/useRefetchOnFocus";
@@ -576,6 +577,12 @@ export function HomeScreen() {
   useRefetchOnFocus(refetchEvaluations, Boolean(session?.token));
 
   const handleStartAssessment = async () => {
+    const lockedEvaluationId =
+      workoutData?.appAccessLock?.evaluationId || dietData?.appAccessLock?.evaluationId;
+    if (lockedEvaluationId) {
+      router.push(`/(app)/assessments/${lockedEvaluationId}` as Href);
+      return;
+    }
     if (!session?.token || !session?.released_questionnaire?.id) return;
     try {
       setIsCreating(true);
@@ -601,6 +608,7 @@ export function HomeScreen() {
   const firstName = (session?.name || "Atleta").split(" ")[0];
 
   const questionnaire = session?.released_questionnaire;
+  const appAccessLock = workoutData?.appAccessLock || dietData?.appAccessLock || null;
   const hasSubmittedEvaluation = evaluations?.some(
     (ev: EvaluationDTO) =>
       (ev.questionnaire.id === questionnaire?.id ||
@@ -634,10 +642,10 @@ export function HomeScreen() {
   }, [todaySession]);
 
   const heroImageSource = useMemo<ImageSourcePropType>(() => {
-    const coverUrl = todaySession?.exercises[0]?.coverUrl;
+    const coverUrl = currentWorkout?.coverUrl || todaySession?.exercises[0]?.coverUrl;
     const resolvedCoverUrl = resolveApiUrl(coverUrl);
     return resolvedCoverUrl ? { uri: resolvedCoverUrl } : WORKOUT_HERO_IMAGE;
-  }, [todaySession]);
+  }, [currentWorkout?.coverUrl, todaySession]);
 
   const handleStartWorkout = () => {
     if (currentWorkout && todaySession?.id) {
@@ -707,6 +715,12 @@ export function HomeScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: "#000000" }}>
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+        <PendingFormAccessModal
+          visible={Boolean(appAccessLock?.enabled)}
+          questionnaireTitle={appAccessLock?.questionnaireTitle}
+          description={appAccessLock?.message}
+          onSubmit={handleStartAssessment}
+        />
         {/* ── Header ── */}
         <PageHeader
           title={`${getGreeting()}, ${firstName}`}

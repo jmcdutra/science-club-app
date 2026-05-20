@@ -19,6 +19,7 @@ import { useEffect, useState } from "react";
 
 import { AppText } from "@/src/shared/components/ui/AppText";
 import { NotificationsModal } from "@/src/shared/components/ui/NotificationsModal";
+import { PendingFormAccessModal } from "@/src/shared/components/ui/PendingFormAccessModal";
 import { PageHeader } from "@/src/shared/components/layout/PageHeader";
 import { useRefetchOnFocus } from "@/src/shared/hooks/useRefetchOnFocus";
 import { useAppTheme } from "@/src/shared/theme/appTheme";
@@ -69,18 +70,6 @@ function mealIcon(meal: DietMeal) {
   if (key.includes("treino")) return Lightning;
   if (key.includes("jantar") || key.includes("ceia")) return Moon;
   return ForkKnife;
-}
-
-function formatPtDate(dateKey: string) {
-  const date = new Date(`${dateKey}T12:00:00`);
-  const day = date
-    .toLocaleDateString("pt-BR", { weekday: "short" })
-    .replace(".", "");
-  const dayNum = date.toLocaleDateString("pt-BR", { day: "numeric" });
-  const month = date
-    .toLocaleDateString("pt-BR", { month: "short" })
-    .replace(".", "");
-  return `${day.charAt(0).toUpperCase()}${day.slice(1)}, ${dayNum} ${month}`;
 }
 
 function formatAdherenceRange(startDate?: string, endDate?: string) {
@@ -357,6 +346,10 @@ export function DietDashboardScreen() {
   const showQuestionnaire = Boolean(questionnaire && !hasSubmittedEvaluation);
 
   const handleStartAssessment = async () => {
+    if (data?.appAccessLock?.evaluationId) {
+      router.push(`/(app)/assessments/${data.appAccessLock.evaluationId}` as Href);
+      return;
+    }
     if (!session?.token || !session?.released_questionnaire?.id) return;
     try {
       setIsCreating(true);
@@ -369,6 +362,19 @@ export function DietDashboardScreen() {
       setIsCreating(false);
     }
   };
+
+  if (data?.appAccessLock?.enabled) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#000000' }}>
+        <PendingFormAccessModal
+          visible
+          questionnaireTitle={data.appAccessLock.questionnaireTitle}
+          description={data.appAccessLock.message}
+          onSubmit={handleStartAssessment}
+        />
+      </View>
+    )
+  }
 
   if (!isLoading && data?.hasAccess === false) {
     return (
@@ -439,6 +445,12 @@ export function DietDashboardScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: '#000000' }}>
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <PendingFormAccessModal
+          visible={Boolean(data?.appAccessLock?.enabled)}
+          questionnaireTitle={data?.appAccessLock?.questionnaireTitle}
+          description={data?.appAccessLock?.message}
+          onSubmit={handleStartAssessment}
+        />
         <PageHeader title="Dieta" onNotificationPress={() => setNotifVisible(true)} />
         <ScrollView
           showsVerticalScrollIndicator={false}

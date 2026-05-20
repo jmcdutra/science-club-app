@@ -131,6 +131,16 @@ function getMetricOption(metric: RankingMetric) {
   return METRIC_OPTIONS.find((item) => item.key === metric) ?? METRIC_OPTIONS[0];
 }
 
+function getBoardMetrics(board: Pick<RankingBoardDTO, 'metric' | 'metrics'>) {
+  return board.metrics?.length ? board.metrics : [board.metric];
+}
+
+function getBoardMetricSummary(board: Pick<RankingBoardDTO, 'metric' | 'metrics'>) {
+  const metrics = getBoardMetrics(board);
+  if (metrics.length === 1) return getMetricOption(metrics[0]).label;
+  return `${metrics.length} métricas`;
+}
+
 function Segment<T extends string>({
   options,
   value,
@@ -385,7 +395,7 @@ function MyRankingCard({
   viewerId?: string;
   onPress: () => void;
 }) {
-  const option = getMetricOption(board.metric);
+  const metricSummary = getBoardMetricSummary(board);
   const viewerEntry = board.entries.find((entry) => entry.studentId === viewerId);
 
   return (
@@ -400,7 +410,7 @@ function MyRankingCard({
             {board.title}
           </AppText>
           <AppText className="mt-1 text-[11px] text-text-muted" numberOfLines={1}>
-            {option.label} · {board.entries.length} participantes
+            {metricSummary} · {board.entries.length} participantes
           </AppText>
         </View>
         <View className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1">
@@ -501,14 +511,14 @@ function CreateRankingModal({
   const queryClient = useQueryClient();
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState('');
-  const [metric, setMetric] = useState<RankingMetric>('workouts_completed');
+  const [selectedMetrics, setSelectedMetrics] = useState<RankingMetric[]>(['workouts_completed']);
   const [period, setPeriod] = useState<CreateRankingPayload['period']>('current_month');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<RankingStudentDTO[]>([]);
 
-  const selectedMetric = getMetricOption(metric);
+  const selectedMetricOptions = selectedMetrics.map((item) => getMetricOption(item));
   const studentsQuery = useQuery({
     queryKey: ['ranking-students', search],
     queryFn: () => searchRankingStudents(token, search),
@@ -518,17 +528,21 @@ function CreateRankingModal({
   const createMutation = useMutation({
     mutationFn: () => createRankingBoard(token, {
       title,
-      metric,
+      metric: selectedMetrics[0],
+      metrics: selectedMetrics,
       period,
       startDate: period === 'custom' ? startDate : undefined,
       endDate: period === 'custom' ? endDate : undefined,
       participantIds: selected.map((item) => item.id),
       visibility: 'private',
-      description: selectedMetric.description,
+      description: selectedMetricOptions.length > 1
+        ? `Ranking personalizado com ${selectedMetricOptions.length} métricas combinadas.`
+        : selectedMetricOptions[0]?.description,
     }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['rankings-overview'] });
       setTitle('');
+      setSelectedMetrics(['workouts_completed']);
       setSelected([]);
       setStep(1);
       onClose();
@@ -540,6 +554,14 @@ function CreateRankingModal({
       current.some((item) => item.id === student.id)
         ? current.filter((item) => item.id !== student.id)
         : [...current, student]
+    ));
+  };
+
+  const toggleMetric = (metric: RankingMetric) => {
+    setSelectedMetrics((current) => (
+      current.includes(metric)
+        ? current.filter((item) => item !== metric)
+        : [...current, metric]
     ));
   };
 
@@ -585,7 +607,13 @@ function CreateRankingModal({
 
               {step === 1 ? (
                 <>
-                  <AppInput label="Nome do ranking" value={title} onChangeText={setTitle} placeholder="Quem treina mais em junho" />
+                  <AppInput
+                    label="Nome do ranking"
+                    value={title}
+                    onChangeText={setTitle}
+                    placeholder="Quem treina mais em junho"
+                    placeholderTextColor={colors.text.muted}
+                  />
                   <View className="gap-2">
                     <AppText className="ml-1 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
                       Período
@@ -608,14 +636,22 @@ function CreateRankingModal({
               {step === 2 ? (
                 <View className="gap-2">
                   <AppText className="ml-1 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
-                    Métrica do ranking
+                    Métricas do ranking
                   </AppText>
+                  <View className="rounded-2xl border border-brand-primary/20 bg-brand-primary/10 px-4 py-3">
+                    <AppText className="text-[12px] font-semibold text-text-main">
+                      {selectedMetrics.length} selecionada{selectedMetrics.length === 1 ? '' : 's'}
+                    </AppText>
+                    <AppText className="mt-1 text-[11px] leading-5 text-text-muted">
+                      Combine mais de uma métrica para montar um ranking personalizado com dados reais do app.
+                    </AppText>
+                  </View>
                   {METRIC_OPTIONS.map(({ key, label, description, Icon }) => {
-                    const active = metric === key;
+                    const active = selectedMetrics.includes(key);
                     return (
                       <Pressable
                         key={key}
-                        onPress={() => setMetric(key)}
+                        onPress={() => toggleMetric(key)}
                         className="flex-row items-center gap-3 rounded-2xl border px-4 py-3.5"
                         style={{
                           borderColor: active ? colors.brand.primary : colors.border.subtle,
@@ -648,7 +684,7 @@ function CreateRankingModal({
                   <TextInput
                     value={search}
                     onChangeText={setSearch}
-                    placeholder="Buscar aluno"
+                    placeholder="Buscar aluno pelo nome"
                     placeholderTextColor={colors.text.muted}
                     className="h-14 rounded-2xl border border-border-subtle bg-bg-surface px-4 text-text-main"
                   />
@@ -660,7 +696,7 @@ function CreateRankingModal({
                       {title || 'Ranking sem nome'}
                     </AppText>
                     <AppText className="mt-1 text-[12px] text-text-muted">
-                      {selectedMetric.label} · você + {selected.length} participantes
+                      {selectedMetricOptions.map((item) => item.label).join(' + ') || 'Escolha métricas'} · você + {selected.length} participantes
                     </AppText>
                   </View>
                 </View>
@@ -699,14 +735,14 @@ function CreateRankingModal({
               <View className="flex-1">
                 <Pressable
                   accessibilityRole="button"
-                  disabled={(step === 1 && !title.trim()) || createMutation.isPending}
+                  disabled={(step === 1 && !title.trim()) || (step === 2 && selectedMetrics.length === 0) || createMutation.isPending}
                   onPress={handlePrimary}
                   className="h-[52px] flex-row items-center justify-center gap-2 rounded-[14px] border border-transparent px-4"
                   style={{
-                    backgroundColor: (step === 1 && !title.trim()) || createMutation.isPending
+                    backgroundColor: (step === 1 && !title.trim()) || (step === 2 && selectedMetrics.length === 0) || createMutation.isPending
                       ? '#1A1A1A'
                       : colors.brand.primary,
-                    opacity: (step === 1 && !title.trim()) || createMutation.isPending ? 0.55 : 1,
+                    opacity: (step === 1 && !title.trim()) || (step === 2 && selectedMetrics.length === 0) || createMutation.isPending ? 0.55 : 1,
                   }}
                 >
                   {createMutation.isPending ? (

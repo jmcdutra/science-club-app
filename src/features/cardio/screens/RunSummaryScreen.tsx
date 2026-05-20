@@ -1,19 +1,37 @@
-import { CheckCircle, Clock, Fire, Flame, Footprints, Heart, Lightning, TrendUp, Wind } from 'phosphor-react-native';
+import Constants from 'expo-constants';
+import { CheckCircle, Clock, Fire, Flame, Footprints, InstagramLogo, Lightning, TrendUp, Wind } from 'phosphor-react-native';
 import { router } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { captureRef } from 'react-native-view-shot';
 import { WebView } from 'react-native-webview';
 
 import { AppCard } from '@/src/shared/components/ui/AppCard';
+import { AppButton } from '@/src/shared/components/ui/AppButton';
 import { AppText } from '@/src/shared/components/ui/AppText';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
 
-import { saveCardioActivity } from '../api/cardio';
+import { deleteCardioActivity, saveCardioActivity, updateCardioActivity } from '../api/cardio';
 import { CardioIcon } from '../components/CardioIcon';
 import { useCardioStore } from '../stores/cardio.store';
 import type { CardioEffort } from '../types';
+
+type NativeShareModule = {
+  Social?: { INSTAGRAM_STORIES?: string };
+  shareSingle: (options: Record<string, unknown>) => Promise<unknown>;
+};
+
+function getNativeShareModule() {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const shareModule = require('react-native-share') as { default?: NativeShareModule } & NativeShareModule;
+    return shareModule.default ?? shareModule;
+  } catch {
+    return null;
+  }
+}
 
 function fmtTime(s: number) {
   const h = Math.floor(s / 3600);
@@ -68,12 +86,18 @@ export function RunSummaryScreen() {
   const insets = useSafeAreaInsets();
   const { session: authSession } = useAuthStore();
   const queryClient = useQueryClient();
+  const composedShareRef = useRef<View>(null);
 
   const completedSession = useCardioStore(s => s.completedSession);
   const clearCompletedSession = useCardioStore(s => s.clearCompletedSession);
 
   const [effort, setEffort] = useState<CardioEffort | null>(null);
   const [notes, setNotes] = useState('');
+  const [savedActivityId, setSavedActivityId] = useState<string | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<{ effort: CardioEffort | null; notes: string } | null>(null);
+  const instagramStoriesAppId = Constants.expoConfig?.extra?.instagramStoriesAppId;
+  const autoSaveAttemptedRef = useRef(false);
+  const discardAfterSaveRef = useRef(false);
 
   const type = completedSession?.type;
 
@@ -82,24 +106,127 @@ export function RunSummaryScreen() {
     return buildMapHtml(type.color, completedSession.coords);
   }, [completedSession, type]);
 
-  const { mutate: save, isPending } = useMutation({
+  const { mutateAsync: saveInitialActivity, isPending: isSavingInitial } = useMutation({
     mutationFn: () => {
       if (!authSession?.token || !completedSession) throw new Error('Sessão inválida');
       return saveCardioActivity(authSession.token, { ...completedSession, effort, notes });
     },
+    onSuccess: async (activity) => {
+      if (discardAfterSaveRef.current && authSession?.token) {
+        try {
+          await deleteCardioActivity(authSession.token, activity._id);
+          queryClient.invalidateQueries({ queryKey: ['cardio-activities'] });
+          queryClient.invalidateQueries({ queryKey: ['cardio-summary'] });
+          clearCompletedSession();
+          router.replace('/(app)/(tabs)/run' as any);
+          return;
+        } catch {
+          discardAfterSaveRef.current = false;
+        }
+      }
+
+      setSavedActivityId(activity._id);
+      setSavedSnapshot({
+        effort: activity.effort || null,
+        notes: activity.notes || '',
+      });
+      queryClient.invalidateQueries({ queryKey: ['cardio-activities'] });
+      queryClient.invalidateQueries({ queryKey: ['cardio-summary'] });
+    },
+    onError: (err: Error) => Alert.alert('Erro', err.message || 'Não foi possível registrar o cardio.'),
+  });
+
+  const { mutateAsync: updateSavedActivity, isPending: isUpdatingActivity } = useMutation({
+    mutationFn: () => {
+      if (!authSession?.token || !savedActivityId) throw new Error('Registro inválido');
+      return updateCardioActivity(authSession.token, savedActivityId, { effort, notes });
+    },
+    onSuccess: (activity) => {
+      setSavedSnapshot({
+        effort: activity.effort || null,
+        notes: activity.notes || '',
+      });
+      queryClient.invalidateQueries({ queryKey: ['cardio-activities'] });
+      queryClient.invalidateQueries({ queryKey: ['cardio-summary'] });
+    },
+    onError: (err: Error) => Alert.alert('Erro', err.message || 'Não foi possível atualizar o cardio.'),
+  });
+
+  const { mutateAsync: removeSavedActivity, isPending: isDeletingActivity } = useMutation({
+    mutationFn: () => {
+      if (!authSession?.token || !savedActivityId) throw new Error('Registro inválido');
+      return deleteCardioActivity(authSession.token, savedActivityId);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cardio-activities'] });
       queryClient.invalidateQueries({ queryKey: ['cardio-summary'] });
-      clearCompletedSession();
-      router.replace('/(app)/(tabs)/run' as any);
     },
-    onError: (err: Error) => Alert.alert('Erro', err.message || 'Não foi possível salvar.'),
+    onError: (err: Error) => Alert.alert('Erro', err.message || 'Não foi possível descartar o cardio.'),
   });
 
   const handleDiscard = useCallback(() => {
+    const discard = async () => {
+      try {
+        if (isSavingInitial && !savedActivityId) {
+          discardAfterSaveRef.current = true;
+          return;
+        }
+        if (savedActivityId && authSession?.token) {
+          await removeSavedActivity();
+        }
+        clearCompletedSession();
+        router.replace('/(app)/(tabs)/run' as any);
+      } catch {
+        return;
+      }
+    };
+
+    void discard();
+  }, [authSession?.token, clearCompletedSession, isSavingInitial, removeSavedActivity, savedActivityId]);
+
+  const handleBackToRun = useCallback(() => {
     clearCompletedSession();
     router.replace('/(app)/(tabs)/run' as any);
   }, [clearCompletedSession]);
+
+  useEffect(() => {
+    if (!completedSession || !authSession?.token || autoSaveAttemptedRef.current || savedActivityId) return;
+    autoSaveAttemptedRef.current = true;
+    void saveInitialActivity();
+  }, [authSession?.token, completedSession, saveInitialActivity, savedActivityId]);
+
+  const shareInstagramStories = useCallback(async () => {
+    if (!completedSession || !type) return;
+
+    const nativeShare = getNativeShareModule();
+    if (!nativeShare?.shareSingle || !nativeShare?.Social?.INSTAGRAM_STORIES) {
+      Alert.alert('Indisponível', 'Compartilhamento direto no Instagram requer build nativa.');
+      return;
+    }
+
+    if (!instagramStoriesAppId) {
+      Alert.alert('Configuração ausente', 'Configure expo.extra.instagramStoriesAppId para compartilhar nos Stories.');
+      return;
+    }
+
+    try {
+      const stickerPath = await captureRef(composedShareRef, {
+        format: 'png',
+        quality: 1,
+        result: 'tmpfile',
+      });
+
+      await nativeShare.shareSingle({
+        social: nativeShare.Social.INSTAGRAM_STORIES,
+        appId: instagramStoriesAppId,
+        stickerImage: stickerPath,
+        backgroundTopColor: '#111111',
+        backgroundBottomColor: type.color,
+      });
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir o Instagram Stories.');
+    }
+  }, [completedSession, instagramStoriesAppId, type]);
 
   if (!completedSession || !type) {
     return (
@@ -108,6 +235,10 @@ export function RunSummaryScreen() {
       </View>
     );
   }
+
+  const hasUnsavedChanges = savedSnapshot
+    ? savedSnapshot.effort !== effort || savedSnapshot.notes !== notes
+    : false;
 
   const stats = [
     {
@@ -126,6 +257,13 @@ export function RunSummaryScreen() {
       iconColor: '#38BDF8',
     },
     {
+      label: 'Pausa',
+      value: fmtTime(completedSession.pausedSeconds || 0),
+      icon: <Clock size={16} color="#A1A1AA" weight="bold" />,
+      iconBg: 'rgba(161,161,170,0.15)',
+      iconColor: '#A1A1AA',
+    },
+    {
       label: type.id === 'bike' ? 'Velocidade' : 'Pace médio',
       value: type.id === 'bike' ? `${completedSession.avgSpeedKmh}` : completedSession.avgPace,
       unit: type.id === 'bike' ? 'km/h' : undefined,
@@ -134,7 +272,7 @@ export function RunSummaryScreen() {
       iconColor: '#F59E0B',
     },
     {
-      label: 'Calorias',
+      label: 'Calorias média',
       value: `${completedSession.calories}`,
       unit: 'kcal',
       icon: <Flame size={16} color="#FB7185" weight="bold" />,
@@ -142,15 +280,7 @@ export function RunSummaryScreen() {
       iconColor: '#FB7185',
     },
     {
-      label: 'FC média',
-      value: `${completedSession.avgHr}`,
-      unit: 'bpm',
-      icon: <Heart size={16} color="#FB7185" weight="bold" />,
-      iconBg: 'rgba(251,113,133,0.15)',
-      iconColor: '#FB7185',
-    },
-    {
-      label: 'Passos',
+      label: 'Passos médio',
       value: completedSession.steps.toLocaleString('pt-BR'),
       icon: <Footprints size={16} color="#22C55E" weight="bold" />,
       iconBg: 'rgba(34,197,94,0.15)',
@@ -202,7 +332,7 @@ export function RunSummaryScreen() {
             </View>
           </View>
 
-          <View className="gap-4 px-6 pt-5">
+          <View ref={composedShareRef} collapsable={false} className="gap-4 px-6 pt-5">
             {/* ── Route map ──────────────────────────────────── */}
             <View
               style={{
@@ -319,47 +449,73 @@ export function RunSummaryScreen() {
               />
             </View>
 
-            <Pressable onPress={handleDiscard} className="items-center py-1">
-              <AppText className="text-[12px] text-text-muted">Descartar atividade</AppText>
+            <Pressable
+              onPress={shareInstagramStories}
+              className="min-h-[54px] flex-row items-center justify-center gap-2 rounded-[18px] border px-4"
+              style={{
+                backgroundColor: '#E11D48',
+                borderColor: 'rgba(255,255,255,0.08)',
+                shadowColor: 'rgba(225,29,72,0.32)',
+                shadowOpacity: 1,
+                shadowRadius: 18,
+                shadowOffset: { width: 0, height: 12 },
+                elevation: 10,
+              }}
+            >
+              <InstagramLogo size={18} color="#FFFFFF" weight="bold" />
+              <AppText className="text-[14px] font-bold text-white">
+                Compartilhar no Instagram
+              </AppText>
+            </Pressable>
+
+            <AppButton
+              variant="primary"
+              fullWidth
+              onPress={handleBackToRun}
+              className="h-[54px] rounded-[18px]"
+            >
+              Voltar
+            </AppButton>
+
+            <Pressable onPress={handleDiscard} disabled={isDeletingActivity} className="items-center py-1">
+              <AppText className="text-[12px] text-text-muted">
+                {isDeletingActivity ? 'Descartando...' : 'Descartar atividade'}
+              </AppText>
             </Pressable>
           </View>
         </ScrollView>
 
-        {/* ── Fixed save button ─────────────────────────────── */}
-        <View
-          style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            paddingHorizontal: 22,
-            paddingTop: 12,
-            paddingBottom: Math.max(insets.bottom, 16),
-            borderTopWidth: 1,
-            borderTopColor: '#222',
-            backgroundColor: 'rgba(0,0,0,0.95)',
-          }}
-        >
-          <Pressable
-            disabled={isPending}
-            onPress={() => save()}
-            style={({ pressed }) => ({
-              minHeight: 54,
-              borderRadius: 16,
-              backgroundColor: type.color,
+        {hasUnsavedChanges ? (
+          <View
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
               alignItems: 'center',
-              justifyContent: 'center',
-              flexDirection: 'row',
-              gap: 8,
-              opacity: pressed || isPending ? 0.78 : 1,
-            })}
+              paddingHorizontal: 22,
+              paddingTop: 12,
+              paddingBottom: Math.max(insets.bottom, 16),
+              borderTopWidth: 1,
+              borderTopColor: '#222',
+              backgroundColor: 'rgba(0,0,0,0.95)',
+            }}
           >
-            <CheckCircle size={18} color="#fff" weight="fill" />
-            <AppText className="text-[15px] font-bold text-white">
-              {isPending ? 'Salvando...' : 'Salvar atividade'}
-            </AppText>
-          </Pressable>
-        </View>
+            <View style={{ width: '90%' }}>
+              <AppButton
+                variant="primary"
+                fullWidth
+                loading={isUpdatingActivity}
+                disabled={isUpdatingActivity}
+                onPress={() => void updateSavedActivity()}
+                leftIcon={<CheckCircle size={18} color="#FFFFFF" weight="fill" />}
+                className="h-[56px] rounded-[18px]"
+              >
+                {isUpdatingActivity ? 'Enviando...' : 'Enviar informações'}
+              </AppButton>
+            </View>
+          </View>
+        ) : null}
       </SafeAreaView>
     </View>
   );

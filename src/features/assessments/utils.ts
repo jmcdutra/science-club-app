@@ -1,4 +1,13 @@
-import { Assessment, AssessmentAnswerValue, AssessmentDraft, AssessmentField } from './types';
+import { Assessment, AssessmentAnswerValue, AssessmentDraft, AssessmentField, AssessmentFieldOption } from './types';
+
+export function getOptionLabel(option: string | AssessmentFieldOption) {
+  return typeof option === 'string' ? option : option.label;
+}
+
+export function getOptionImageUrl(option: string | AssessmentFieldOption) {
+  if (typeof option === 'string') return '';
+  return option.imageUrl || '';
+}
 
 export function getStatusLabel(status: Assessment['status']) {
   const labels: Record<Assessment['status'], string> = {

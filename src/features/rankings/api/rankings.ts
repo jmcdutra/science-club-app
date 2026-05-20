@@ -29,6 +29,7 @@ export type RankingBoardDTO = {
   title: string;
   description: string;
   metric: RankingMetric;
+  metrics?: RankingMetric[];
   metricLabel: string;
   unit: string;
   period: 'all_time' | 'current_month' | 'custom';
@@ -50,7 +51,8 @@ export type RankingsOverviewDTO = {
 export type CreateRankingPayload = {
   title: string;
   description?: string;
-  metric: RankingMetric;
+  metric?: RankingMetric;
+  metrics: RankingMetric[];
   period: 'all_time' | 'current_month' | 'custom';
   startDate?: string;
   endDate?: string;

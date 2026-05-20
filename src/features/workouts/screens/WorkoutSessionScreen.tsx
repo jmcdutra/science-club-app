@@ -3,7 +3,6 @@ import {
   CaretLeft,
   Check,
   CheckCircle,
-  Clock,
   LinkSimple,
   Minus,
   Pause,
@@ -13,10 +12,12 @@ import {
   Question,
   X,
 } from "phosphor-react-native";
-import { router, type Href, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { Redirect, type Href, useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  AppState,
+  type AppStateStatus,
   Linking,
   Modal,
   Pressable,
@@ -84,6 +85,26 @@ function formatSeconds(total: number) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+function formatHistoryDayChip(value?: string | null) {
+  const parsed = value ? new Date(value) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) return "--/--";
+  return parsed.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+}
+
+function formatHistoryTimestamp(value?: string | null) {
+  const parsed = value ? new Date(value) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) return "Sem data";
+  return parsed.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function weightKey(eId: string, sId: string) {
   return `${eId}:${sId}`;
 }
@@ -119,59 +140,34 @@ function extractPreviousWeight(previous?: string) {
   return match ? Number(match[0]) : null;
 }
 
-function formatVolumeTon(sets: WorkoutSet[]) {
-  const totalKg = sets.reduce((sum, set) => {
-    const weight = parseWeight(set.weight);
-    const reps = parseInt(set.reps || "0", 10) || 0;
-    return sum + weight * reps;
-  }, 0);
+function buildHistoryPrefill(
+  entry?: {
+    exercises?: {
+      exerciseId: string;
+      sets: {
+        setId: string;
+        performedWeightLabel: string;
+        performedReps: number;
+      }[];
+    }[];
+  } | null,
+) {
+  const weightOverrides: Record<string, string> = {};
+  const repsOverrides: Record<string, string> = {};
 
-  if (!totalKg) return null;
-  return `${(totalKg / 1000).toFixed(1).replace(".", ",")} ton`;
-}
-
-function formatPreviousHeadline(previous: string, sets: WorkoutSet[]) {
-  const weightedSets = sets.filter((set) => parseWeight(set.weight) > 0);
-
-  if (weightedSets.length > 0) {
-    const groups: string[] = [];
-    let currentWeight = parseWeight(weightedSets[0].weight);
-    let currentCount = 0;
-
-    weightedSets.forEach((set) => {
-      const weight = parseWeight(set.weight);
-      if (weight === currentWeight) {
-        currentCount += 1;
-        return;
+  (entry?.exercises || []).forEach((exercise) => {
+    exercise.sets.forEach((set) => {
+      const setKey = `${exercise.exerciseId}:${set.setId}`;
+      if (set.performedWeightLabel) {
+        weightOverrides[setKey] = set.performedWeightLabel;
       }
-      groups.push(
-        currentCount > 1
-          ? `${currentWeight}x${currentCount}`
-          : `${currentWeight}`,
-      );
-      currentWeight = weight;
-      currentCount = 1;
+      if (set.performedReps > 0) {
+        repsOverrides[setKey] = String(set.performedReps);
+      }
     });
+  });
 
-    groups.push(
-      currentCount > 1
-        ? `${currentWeight}x${currentCount}`
-        : `${currentWeight}`,
-    );
-
-    if (groups.length > 1) return groups.join(" + ");
-
-    const first = weightedSets[0];
-    return `${parseWeight(first.weight)}kg × ${first.reps}`;
-  }
-
-  const durationSet = sets.find((set) => set.duration);
-  if (durationSet?.duration) return durationSet.duration;
-
-  const bodyweightSet = sets[0];
-  if (bodyweightSet?.reps) return `${bodyweightSet.reps} reps`;
-
-  return previous;
+  return { weightOverrides, repsOverrides };
 }
 
 function getSetLabel(set: WorkoutSet, index: number) {
@@ -817,12 +813,19 @@ function ExitWorkoutPrompt({
 }
 
 export function WorkoutSessionScreen() {
-  const { id, sessionId: routeSessionId, exerciseId } = useLocalSearchParams<{
+  const {
+    id,
+    sessionId: routeSessionId,
+    exerciseId,
+    locked: lockedParam,
+  } = useLocalSearchParams<{
     id: string;
     sessionId?: string;
     exerciseId?: string;
+    locked?: string;
   }>();
   const workoutId = id ?? "";
+  const isLockedSession = lockedParam === "1";
   const { isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { session: authSession } = useAuthStore();
@@ -843,11 +846,10 @@ export function WorkoutSessionScreen() {
     : localWorkoutSheet
       ? getWorkoutSession(workoutId, routeSessionId)
       : null;
-  if (!session) return null;
-  const currentSessionId = session.id;
-  const sessionExercises = session.exercises.filter(Boolean);
+  const currentSessionId = session?.id ?? routeSessionId ?? "";
+  const sessionExercises = session?.exercises.filter(Boolean) ?? [];
   const localSession =
-    localWorkoutSheet?.sessions.find((item) => item.id === session.id) ??
+    localWorkoutSheet?.sessions.find((item) => item.id === session?.id) ??
     localWorkoutSheet?.sessions[0] ??
     null;
   const initialIndex = Math.max(
@@ -856,6 +858,8 @@ export function WorkoutSessionScreen() {
   );
   const scrollRef = useRef<ScrollViewType>(null);
   const seriesYRef = useRef(0);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const backgroundedAtRef = useRef<number | null>(null);
 
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [completedByExercise, setCompletedByExercise] = useState<
@@ -867,6 +871,7 @@ export function WorkoutSessionScreen() {
   const [workoutFinished, setWorkoutFinished] = useState(false);
   const [paused, setPaused] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingRedirect, setPendingRedirect] = useState<Href | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [weightOverrides, setWeightOverrides] = useState<
     Record<string, string>
@@ -883,47 +888,78 @@ export function WorkoutSessionScreen() {
   const [restElapsedSeconds, setRestElapsedSeconds] = useState(0);
   const [restTotal, setRestTotal] = useState(0);
   const [startedAt, setStartedAt] = useState<string | null>(null);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(
+    null,
+  );
 
   const { data: remoteProgress } = useQuery({
     queryKey: ["student-workout-progress", workoutId, currentSessionId],
     queryFn: () => getSessionProgress(authSession?.token!, workoutId, currentSessionId),
     enabled: !!authSession?.token && !!workoutId && !!currentSessionId,
   });
-  const exercise = sessionExercises[currentIndex] ?? sessionExercises[0];
-  const sessionDisplayTitle = getWorkoutDisplayTitle(session);
+  const exercise = sessionExercises[currentIndex] ?? sessionExercises[0] ?? null;
+  const sessionDisplayTitle = session
+    ? getWorkoutDisplayTitle(session)
+    : "Treino";
   const localExercise = localSession?.exercises.find(
-    (item) => item.id === exercise.id,
+    (item) => item.id === exercise?.id,
   );
   const sessionImageIndex = Math.max(
     0,
-    localWorkoutSheet?.sessions.findIndex((item) => item.id === session.id) ?? 0,
+    localWorkoutSheet?.sessions.findIndex((item) => item.id === session?.id) ?? 0,
   );
   const sessionImage =
-    exercise.coverUrl
+    exercise?.coverUrl
       ? { uri: resolveApiUrl(exercise.coverUrl) ?? exercise.coverUrl }
       : SESSION_IMAGES[sessionImageIndex % SESSION_IMAGES.length];
   const getExerciseSets = (
     item: (typeof sessionExercises)[number],
   ): WorkoutSet[] => setsByExercise[item.id] ?? item.sets;
-  const activeExerciseSets = getExerciseSets(exercise);
+  const activeExerciseSets = exercise ? getExerciseSets(exercise) : [];
   const exerciseVideos: WorkoutExerciseVideo[] =
     (exercise as any)?.videos?.length
       ? ((exercise as any).videos as WorkoutExerciseVideo[])
       : localExercise?.videos ?? [];
   const exerciseDescription =
-    exercise.description ?? localExercise?.description;
+    exercise?.description ?? localExercise?.description;
   const exerciseExecutionTips =
-    exercise.executionTips ?? localExercise?.executionTips ?? [];
-  const previousHeadline = formatPreviousHeadline(
-    exercise.previous,
-    activeExerciseSets,
+    exercise?.executionTips ?? localExercise?.executionTips ?? [];
+  const sessionHistory = useMemo(
+    () => currentWorkoutData?.historyBySession?.[currentSessionId] ?? [],
+    [currentSessionId, currentWorkoutData?.historyBySession],
   );
-  const previousVolume = formatVolumeTon(activeExerciseSets);
-  const previousWeight = extractPreviousWeight(exercise.previous) ?? 50;
+  const latestHistoryEntry = sessionHistory[0] ?? null;
+  const selectedHistoryEntry =
+    sessionHistory.find((entry) => entry.id === selectedHistoryId) ?? null;
+  const latestHistoryExercise = useMemo(
+    () =>
+      latestHistoryEntry?.exercises.find(
+        (historyExercise) => historyExercise.exerciseId === exercise?.id,
+      ) ?? null,
+    [exercise?.id, latestHistoryEntry],
+  );
+  const selectedHistoryExercise = useMemo(
+    () =>
+      selectedHistoryEntry?.exercises.find(
+        (historyExercise) => historyExercise.exerciseId === exercise?.id,
+      ) ?? null,
+    [exercise?.id, selectedHistoryEntry],
+  );
+  const historicalWeightFallback =
+    latestHistoryExercise?.sets.find((set) => set.performedWeightKg > 0)
+      ?.performedWeightKg ?? 0;
+  const previousWeight =
+    historicalWeightFallback || extractPreviousWeight(exercise?.previous) || 50;
+  const historyPrefill = useMemo(
+    () => buildHistoryPrefill(latestHistoryEntry),
+    [latestHistoryEntry],
+  );
 
   function getDisplayWeight(set: WorkoutSet, index: number) {
-    const source = getSetWeight(exercise.id, set.id, set.weight);
+    const source = getSetWeight(exercise?.id ?? "", set.id, set.weight);
     if (source) return source;
+    const historyLabel = latestHistoryExercise?.sets[index]?.performedWeightLabel;
+    if (historyLabel) return historyLabel;
     const weight = previousWeight + Math.max(0, index - 1) * 5;
     return `${weight}kg`;
   }
@@ -934,11 +970,11 @@ export function WorkoutSessionScreen() {
     url: resolveApiUrl(video.url) ?? video.url,
     embedUrl: normalizeVideoEmbedUrl(video),
   }));
-  const completedSets = completedByExercise[exercise.id] ?? 0;
+  const completedSets = exercise ? (completedByExercise[exercise.id] ?? 0) : 0;
   const currentSetRestSeconds =
     activeExerciseSets[
       Math.min(completedSets, Math.max(activeExerciseSets.length - 1, 0))
-    ]?.restSeconds ?? exercise.restSeconds;
+    ]?.restSeconds ?? exercise?.restSeconds ?? 0;
   const restRunning = restLeft > 0;
   const totalSets = sessionExercises.reduce(
     (sum, item) => sum + getExerciseSets(item).length,
@@ -973,7 +1009,9 @@ export function WorkoutSessionScreen() {
     completedSetsTotal === 0
       ? 0
       : Math.max(3, (completedSetsTotal / Math.max(1, totalSets)) * 100);
-  const muscleAccent = MUSCLE_COLOR[exercise.muscle] ?? "#8B5CF6";
+  const muscleAccent = exercise
+    ? MUSCLE_COLOR[exercise.muscle] ?? "#8B5CF6"
+    : "#8B5CF6";
 
   useEffect(() => {
     if (!timerRunning) return undefined;
@@ -992,24 +1030,124 @@ export function WorkoutSessionScreen() {
 
   useEffect(() => {
     if (!remoteProgress) return;
+    const syncTimestamp = remoteProgress.updated_at || remoteProgress.started_at;
+    const catchUpSeconds =
+      remoteProgress.started_at &&
+      !remoteProgress.finished_at &&
+      !remoteProgress.is_paused &&
+      syncTimestamp
+        ? Math.max(
+            0,
+            Math.floor(
+              (Date.now() - new Date(syncTimestamp).getTime()) / 1000,
+            ),
+          )
+        : 0;
+
+    if (remoteProgress.finished_at) {
+      setCompletedByExercise({});
+      setWeightOverrides({});
+      setRepsOverrides({});
+      setElapsed(0);
+      setRestElapsedSeconds(0);
+      setRestLeft(0);
+      setRestTotal(0);
+      setStartedAt(null);
+      setWorkoutStarted(false);
+      setWorkoutFinished(false);
+      setPaused(false);
+      return;
+    }
     setCompletedByExercise(remoteProgress.completed_sets || {});
     setWeightOverrides(remoteProgress.weight_overrides || {});
     setRepsOverrides(remoteProgress.reps_overrides || {});
-    setElapsed(remoteProgress.elapsed_seconds || 0);
-    setRestElapsedSeconds(remoteProgress.rest_elapsed_seconds || 0);
-    setRestLeft(remoteProgress.rest_left_seconds || 0);
+    setElapsed(Number(remoteProgress.elapsed_seconds || 0) + catchUpSeconds);
+    setRestElapsedSeconds(
+      Number(remoteProgress.rest_elapsed_seconds || 0) + catchUpSeconds,
+    );
+    setRestLeft(
+      Math.max(0, Number(remoteProgress.rest_left_seconds || 0) - catchUpSeconds),
+    );
     setRestTotal(
       remoteProgress.rest_left_seconds > 0
-        ? remoteProgress.rest_left_seconds +
-            (remoteProgress.rest_elapsed_seconds || 0)
+        ? Math.max(0, Number(remoteProgress.rest_left_seconds || 0) - catchUpSeconds) +
+            Number(remoteProgress.rest_elapsed_seconds || 0) +
+            catchUpSeconds
         : 0,
     );
     setStartedAt(remoteProgress.started_at || null);
     setWorkoutStarted(Boolean(remoteProgress.started_at));
+    setPaused(Boolean(remoteProgress.is_paused));
   }, [remoteProgress]);
 
   useEffect(() => {
+    if (!sessionHistory.length) {
+      setSelectedHistoryId(null);
+      return;
+    }
+    setSelectedHistoryId((current) =>
+      current && sessionHistory.some((entry) => entry.id === current)
+        ? current
+        : null,
+    );
+  }, [sessionHistory]);
+
+  useEffect(() => {
+    if (!latestHistoryEntry) return;
+    if (workoutStarted || completedSetsTotal > 0) return;
+    if (Object.keys(remoteProgress?.weight_overrides || {}).length > 0) return;
+    if (Object.keys(remoteProgress?.reps_overrides || {}).length > 0) return;
+
+    setWeightOverrides(historyPrefill.weightOverrides);
+    setRepsOverrides(historyPrefill.repsOverrides);
+  }, [
+    completedSetsTotal,
+    historyPrefill.repsOverrides,
+    historyPrefill.weightOverrides,
+    remoteProgress?.reps_overrides,
+    remoteProgress?.weight_overrides,
+    latestHistoryEntry,
+    workoutStarted,
+  ]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (
+        appStateRef.current === "active" &&
+        /inactive|background/.test(nextState)
+      ) {
+        backgroundedAtRef.current = Date.now();
+      }
+
+      if (
+        /inactive|background/.test(appStateRef.current) &&
+        nextState === "active" &&
+        backgroundedAtRef.current &&
+        workoutStarted &&
+        !paused &&
+        !workoutFinished
+      ) {
+        const elapsedGap = Math.max(
+          0,
+          Math.floor((Date.now() - backgroundedAtRef.current) / 1000),
+        );
+        if (elapsedGap > 0) {
+          setElapsed((value) => value + elapsedGap);
+          setRestElapsedSeconds((value) => value + elapsedGap);
+          setRestLeft((value) => Math.max(0, value - elapsedGap));
+        }
+        backgroundedAtRef.current = null;
+      }
+
+      appStateRef.current = nextState;
+    });
+
+    return () => subscription.remove();
+  }, [paused, workoutFinished, workoutStarted]);
+
+  useEffect(() => {
     if (!authSession?.token || !workoutId || !currentSessionId) return;
+    if (!workoutStarted && completedSetsTotal === 0 && !startedAt) return;
     const timer = setInterval(() => {
       saveSessionProgress(authSession.token, workoutId, currentSessionId, {
         completed_sets: completedByExercise,
@@ -1020,6 +1158,7 @@ export function WorkoutSessionScreen() {
         rest_left_seconds: restLeft,
         started_at: startedAt || new Date().toISOString(),
         finished_at: workoutFinished ? new Date().toISOString() : null,
+        is_paused: paused,
       }).catch(() => null);
     }, 5000);
     return () => clearInterval(timer);
@@ -1028,13 +1167,16 @@ export function WorkoutSessionScreen() {
     workoutId,
     currentSessionId,
     completedByExercise,
+    completedSetsTotal,
     weightOverrides,
     repsOverrides,
     elapsed,
     restElapsedSeconds,
     restLeft,
     startedAt,
+    workoutStarted,
     workoutFinished,
+    paused,
   ]);
 
   function startWorkout() {
@@ -1043,9 +1185,23 @@ export function WorkoutSessionScreen() {
     setWorkoutStarted(true);
     setWorkoutFinished(false);
     setPaused(false);
+    if (authSession?.token) {
+      void saveSessionProgress(authSession.token, workoutId, currentSessionId, {
+        completed_sets: completedByExercise,
+        weight_overrides: weightOverrides,
+        reps_overrides: repsOverrides,
+        elapsed_seconds: elapsed,
+        rest_elapsed_seconds: restElapsedSeconds,
+        rest_left_seconds: restLeft,
+        started_at: started,
+        finished_at: null,
+        is_paused: false,
+      }).catch(() => null);
+    }
   }
 
   function handlePrimaryAction() {
+    if (!exercise) return;
     if (exerciseDone) {
       if (isLastExercise) {
         finishWorkout();
@@ -1059,9 +1215,28 @@ export function WorkoutSessionScreen() {
   }
 
   function markSet() {
+    if (!exercise) return;
     const next = Math.min(activeExerciseSets.length, completedSets + 1);
+    const completedSetIndex = Math.max(0, next - 1);
+    const completedSet = activeExerciseSets[completedSetIndex];
+    if (completedSet) {
+      const nextWeightKey = weightKey(exercise.id, completedSet.id);
+      const nextRepsKey = repsKey(exercise.id, completedSet.id);
+      const fallbackWeight =
+        weightOverrides[nextWeightKey] || getDisplayWeight(completedSet, completedSetIndex);
+      const fallbackReps =
+        repsOverrides[nextRepsKey] ||
+        latestHistoryExercise?.sets[completedSetIndex]?.performedReps?.toString() ||
+        normalizeReps(completedSet.reps);
+
+      if (fallbackWeight && !weightOverrides[nextWeightKey]) {
+        setWeightOverrides((current) => ({ ...current, [nextWeightKey]: fallbackWeight }));
+      }
+      if (fallbackReps && !repsOverrides[nextRepsKey]) {
+        setRepsOverrides((current) => ({ ...current, [nextRepsKey]: fallbackReps }));
+      }
+    }
     setCompletedByExercise((c) => ({ ...c, [exercise.id]: next }));
-    const completedSet = activeExerciseSets[Math.max(0, next - 1)];
     const nextRest =
       next < activeExerciseSets.length
         ? completedSet?.restSeconds ?? exercise.restSeconds
@@ -1102,11 +1277,30 @@ export function WorkoutSessionScreen() {
     return repsOverrides[repsKey(eId, sId)] ?? pr;
   }
 
+  function getDisplayReps(set: WorkoutSet, index: number) {
+    const historyReps = latestHistoryExercise?.sets[index]?.performedReps;
+    if (!workoutStarted && completedSetsTotal === 0 && historyReps && historyReps > 0) {
+      return String(historyReps);
+    }
+
+    const source = getSetReps(exercise?.id ?? "", set.id, set.reps);
+    if (repsOverrides[repsKey(exercise?.id ?? "", set.id)]) {
+      return normalizeReps(source);
+    }
+
+    if (historyReps && historyReps > 0) {
+      return String(historyReps);
+    }
+
+    return normalizeReps(source);
+  }
+
   function openSetEditor(setIndex: number) {
+    if (!exercise) return;
     const set = activeExerciseSets[setIndex];
     if (!set) return;
-    setRepsDraft(normalizeReps(getSetReps(exercise.id, set.id, set.reps)));
-    setWeightDraft(parseWeight(getDisplayWeight(set, setIndex)).toString());
+    setRepsDraft("");
+    setWeightDraft("");
     setSetEditor({ exerciseIndex: currentIndex, setIndex });
   }
 
@@ -1152,6 +1346,7 @@ export function WorkoutSessionScreen() {
         rest_left_seconds: restLeft,
         started_at: startedAt || new Date().toISOString(),
         finished_at: workoutFinished ? new Date().toISOString() : null,
+        is_paused: paused,
       }).catch(() => null);
     }
 
@@ -1160,7 +1355,7 @@ export function WorkoutSessionScreen() {
 
   function addSet() {
     const lastSet = activeExerciseSets[activeExerciseSets.length - 1];
-    if (!lastSet) return;
+    if (!lastSet || !exercise) return;
     const newSet: WorkoutSet = {
       ...lastSet,
       id: `${lastSet.id}-extra-${Date.now()}`,
@@ -1172,19 +1367,37 @@ export function WorkoutSessionScreen() {
     }));
   }
 
-  function finishWorkout() {
+  async function finishWorkout() {
     setWorkoutFinished(true);
     setPaused(true);
     setRestLeft(0);
     setRestTotal(0);
-    router.push(
-        `/(app)/workouts/${workoutId}/finish?sessionId=${currentSessionId}&elapsed=${elapsed}&sets=${completedSetsTotal}&totalSets=${totalSets}&exercises=${completedExercisesTotal}&progressions=${progressionsTotal}` as Href,
+    const nextStartedAt = startedAt || new Date().toISOString();
+    setStartedAt(nextStartedAt);
+
+    if (authSession?.token) {
+      await saveSessionProgress(authSession.token, workoutId, currentSessionId, {
+        completed_sets: completedByExercise,
+        weight_overrides: weightOverrides,
+        reps_overrides: repsOverrides,
+        elapsed_seconds: elapsed,
+        rest_elapsed_seconds: restElapsedSeconds,
+        rest_left_seconds: 0,
+        started_at: nextStartedAt,
+        finished_at: null,
+        is_paused: false,
+      }).catch(() => null);
+    }
+
+    setPendingRedirect(
+      `/(app)/workouts/${workoutId}/finish?sessionId=${currentSessionId}&elapsed=${elapsed}&sets=${completedSetsTotal}&totalSets=${totalSets}&exercises=${completedExercisesTotal}&progressions=${progressionsTotal}` as Href,
     );
   }
 
   function confirmCloseWorkout() {
+    if (isLockedSession) return;
     if (!workoutStarted && completedSetsTotal === 0) {
-      router.back();
+      setPendingRedirect("/(app)/(tabs)/workouts" as Href);
       return;
     }
     setConfirmOpen(true);
@@ -1196,7 +1409,23 @@ export function WorkoutSessionScreen() {
       startWorkout();
       return;
     }
-    setPaused((v) => !v);
+    setPaused((value) => {
+      const nextPaused = !value;
+      if (authSession?.token) {
+        void saveSessionProgress(authSession.token, workoutId, currentSessionId, {
+          completed_sets: completedByExercise,
+          weight_overrides: weightOverrides,
+          reps_overrides: repsOverrides,
+          elapsed_seconds: elapsed,
+          rest_elapsed_seconds: restElapsedSeconds,
+          rest_left_seconds: restLeft,
+          started_at: startedAt || new Date().toISOString(),
+          finished_at: workoutFinished ? new Date().toISOString() : null,
+          is_paused: nextPaused,
+        }).catch(() => null);
+      }
+      return nextPaused;
+    });
   }
 
   const primaryActionLabel = exerciseDone
@@ -1204,6 +1433,12 @@ export function WorkoutSessionScreen() {
       ? "Finalizar treino"
       : "Próximo exercício"
     : "Marcar série";
+
+  if (!session || !exercise) return null;
+
+  if (pendingRedirect) {
+    return <Redirect href={pendingRedirect} />;
+  }
 
   return (
     <View className="flex-1 bg-bg-base">
@@ -1218,7 +1453,9 @@ export function WorkoutSessionScreen() {
           <Pressable
             accessibilityRole="button"
             className="h-[34px] w-[34px] items-center justify-center rounded-full bg-bg-surface border border-border-subtle"
+            disabled={isLockedSession}
             onPress={confirmCloseWorkout}
+            style={isLockedSession ? { opacity: 0 } : undefined}
           >
             <X color={isDark ? "#9CA3AF" : "#6B7280"} size={14} weight="bold" />
           </Pressable>
@@ -1408,26 +1645,105 @@ export function WorkoutSessionScreen() {
               </Pressable>
             </View>
 
-            {exercise.previous ? (
-              <View className="mb-5 flex-row items-center gap-2 rounded-[10px] border border-border-subtle bg-bg-surface px-3 py-2.5">
-                <Clock
-                  color={isDark ? "#8A8A8A" : "#71717A"}
-                  size={12}
-                  weight="bold"
-                />
-                <AppText className="text-[11px] text-text-muted">
-                  Última vez:
+            {sessionHistory.length > 0 ? (
+              <View className="mb-5">
+                <AppText className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">
+                  Histórico do exercício
                 </AppText>
-                <AppText
-                  className="flex-1 text-[11px] font-bold text-brand-secondary"
-                  numberOfLines={1}
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 10, paddingRight: 8 }}
                 >
-                  {previousHeadline}
-                </AppText>
-                {previousVolume ? (
-                  <AppText className="text-[10px] text-text-muted">
-                    {previousVolume}
-                  </AppText>
+                  {sessionHistory.map((entry) => {
+                    const active = entry.id === selectedHistoryEntry?.id;
+                    return (
+                      <Pressable
+                        key={entry.id}
+                        onPress={() =>
+                          setSelectedHistoryId((current) =>
+                            current === entry.id ? null : entry.id,
+                          )
+                        }
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 999,
+                          borderWidth: 1,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: active
+                            ? `${muscleAccent}14`
+                            : isDark
+                              ? "#111111"
+                              : "#F7F7F7",
+                          borderColor: active
+                            ? muscleAccent
+                            : isDark
+                              ? "#232326"
+                              : "#E4E4E7",
+                        }}
+                      >
+                        <AppText
+                          className="text-center text-[10px] font-bold"
+                          style={{
+                            color: active
+                              ? muscleAccent
+                              : isDark
+                                ? "#FAFAFA"
+                                : "#111827",
+                          }}
+                        >
+                          {formatHistoryDayChip(entry.recordedAt)}
+                        </AppText>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+
+                {selectedHistoryEntry && selectedHistoryExercise ? (
+                  <View className="mt-3 rounded-[18px] border border-border-subtle bg-bg-surface px-4 py-4">
+                    <View className="mb-3 flex-row items-center justify-between gap-3">
+                      <AppText className="text-[12px] font-bold text-text-main">
+                        {formatHistoryTimestamp(selectedHistoryEntry.recordedAt)}
+                      </AppText>
+                      {selectedHistoryEntry.sessionFocus ? (
+                        <View
+                          style={{
+                            borderRadius: 999,
+                            backgroundColor: `${muscleAccent}12`,
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                          }}
+                        >
+                          <AppText
+                            className="text-[10px] font-bold uppercase"
+                            style={{ color: muscleAccent }}
+                          >
+                            {selectedHistoryEntry.sessionFocus}
+                          </AppText>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    <View className="gap-2">
+                      {selectedHistoryExercise.sets.map((set, index) => (
+                        <View
+                          key={set.setId}
+                          className="flex-row items-center justify-between rounded-[14px] border border-border-subtle px-3 py-3"
+                        >
+                          <AppText className="text-[12px] font-semibold text-text-main">
+                            Série {index + 1}
+                          </AppText>
+                          <AppText className="text-[12px] font-semibold text-text-main">
+                            {set.performedWeightLabel || set.plannedWeight || "Carga livre"}{" "}
+                            x {set.performedReps || normalizeReps(set.plannedReps)} reps
+                          </AppText>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
                 ) : null}
               </View>
             ) : null}
@@ -1461,9 +1777,7 @@ export function WorkoutSessionScreen() {
               {activeExerciseSets.map((set, index) => {
                 const done = index < completedSets;
                 const isNext = index === completedSets && !exerciseDone;
-                const curReps = normalizeReps(
-                  getSetReps(exercise.id, set.id, set.reps),
-                );
+                const curReps = getDisplayReps(set, index);
                 const curWeight = getDisplayWeight(set, index);
                 const editing =
                   setEditor?.exerciseIndex === currentIndex &&
@@ -1502,6 +1816,8 @@ export function WorkoutSessionScreen() {
                             className="h-[34px] w-[58px] rounded-[8px] border border-brand-primary bg-bg-elevated px-2 text-center text-sm font-bold text-white"
                             keyboardType="decimal-pad"
                             onChangeText={setWeightDraft}
+                            placeholder={getDisplayWeight(set, index)}
+                            placeholderTextColor={isDark ? "#71717A" : "#A1A1AA"}
                             style={{
                               lineHeight: 16,
                               paddingVertical: 0,
@@ -1544,6 +1860,10 @@ export function WorkoutSessionScreen() {
                             className="h-[34px] w-[40px] rounded-[8px] border border-brand-primary bg-bg-elevated px-2 text-center text-sm font-bold text-white"
                             keyboardType="number-pad"
                             onChangeText={setRepsDraft}
+                            placeholder={
+                              getDisplayReps(set, index)
+                            }
+                            placeholderTextColor={isDark ? "#71717A" : "#A1A1AA"}
                             style={{
                               lineHeight: 16,
                               paddingVertical: 0,
@@ -1782,7 +2102,7 @@ export function WorkoutSessionScreen() {
         doneSets={completedSetsTotal}
         elapsed={elapsed}
         onClose={() => setConfirmOpen(false)}
-        onExit={() => router.replace("/(app)/(tabs)/workouts")}
+        onExit={() => setPendingRedirect("/(app)/(tabs)/workouts" as Href)}
         onSaveAndExit={finishWorkout}
         onResume={() => setConfirmOpen(false)}
         totalSets={totalSets}

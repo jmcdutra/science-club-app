@@ -39,6 +39,16 @@ const METRIC_META: Record<RankingMetric, { label: string; Icon: typeof Barbell }
   meals_logged: { label: 'Dieta', Icon: ForkKnife },
 };
 
+function getBoardMetrics(board: Pick<RankingBoardDTO, 'metric' | 'metrics'>) {
+  return board.metrics?.length ? board.metrics : [board.metric];
+}
+
+function getBoardMetricSummary(board: Pick<RankingBoardDTO, 'metric' | 'metrics'>) {
+  const metrics = getBoardMetrics(board);
+  if (metrics.length === 1) return METRIC_META[metrics[0]]?.label || 'Métrica';
+  return metrics.map((metric) => METRIC_META[metric]?.label || metric).join(' + ');
+}
+
 function formatValue(value: number, unit: string) {
   if (unit === 'kg' && value >= 1000) return `${(value / 1000).toFixed(1).replace('.', ',')} t`;
   if (unit === 'min' && value >= 60) return `${(value / 60).toFixed(1).replace('.', ',')} h`;
@@ -167,7 +177,8 @@ export function RankingDetailScreen() {
     );
   }
 
-  const meta = METRIC_META[board.metric];
+  const metrics = getBoardMetrics(board);
+  const meta = METRIC_META[metrics[0]];
   const MetricIcon = meta.Icon;
   const viewerEntry = board.entries.find((entry) => entry.studentId === authSession?.studentId);
 
@@ -197,7 +208,7 @@ export function RankingDetailScreen() {
                 {board.title}
               </AppText>
               <AppText className="mt-1 text-[12px] leading-5 text-text-muted">
-                {meta.label} · {board.entries.length} participantes
+                {getBoardMetricSummary(board)} · {board.entries.length} participantes
               </AppText>
             </View>
           </View>

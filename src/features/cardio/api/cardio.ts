@@ -26,6 +26,7 @@ export async function saveCardioActivity(token: string, session: ActiveCardioSes
       started_at: session.startedAt,
       finished_at: session.finishedAt,
       elapsed_seconds: session.elapsed,
+      paused_seconds: session.pausedSeconds,
       distance_km: session.distanceKm,
       calories: session.calories,
       avg_pace: session.avgPace,
@@ -37,6 +38,25 @@ export async function saveCardioActivity(token: string, session: ActiveCardioSes
       notes: session.notes,
       route_coordinates: session.coords.filter((_, i) => i % 3 === 0),
     }),
+  });
+}
+
+export async function updateCardioActivity(
+  token: string,
+  activityId: string,
+  payload: { effort: ActiveCardioSession['effort']; notes: string },
+) {
+  return apiClient<CardioActivityDTO>(`/api/cardio/${activityId}`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteCardioActivity(token: string, activityId: string) {
+  return apiClient<{ success: boolean }>(`/api/cardio/${activityId}`, {
+    method: 'DELETE',
+    token,
   });
 }
 

@@ -1,4 +1,5 @@
 import * as ImagePicker from "expo-image-picker";
+import { Image } from "expo-image";
 import {
   ArrowCounterClockwise,
   Camera,
@@ -23,6 +24,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AppButton } from "@/src/shared/components/ui/AppButton";
 import { AppText } from "@/src/shared/components/ui/AppText";
+import { resolveApiUrl } from "@/src/shared/api/apiClient";
 import { useAuthStore } from "@/src/features/auth/services/auth.store";
 import { WorkoutNativeBottomSheet } from "@/src/features/workouts/components/WorkoutNativeBottomSheet";
 
@@ -35,6 +37,7 @@ import {
   skipDietMeal,
   uploadDietMealPhoto,
 } from "../api/diet";
+import { DietMealPhotoModal } from "./DietMealPhotoModal";
 import { useDietStore, useSelectedDietDay } from "../services/diet.store";
 import type { DietFood, DietFoodSubstitution } from "../types";
 import {
@@ -129,8 +132,11 @@ function MacroChip({
       >
         {Math.round(value)}
       </AppText>
+      <AppText className="mt-1 text-[9px] font-medium text-text-muted">
+        Registrado
+      </AppText>
       <AppText className="mt-1 text-[9px] text-text-muted">
-        /{target}
+        Esperado {Math.round(target)}
         {unit ?? ""}
       </AppText>
     </View>
@@ -906,6 +912,10 @@ function DietMealDrawerContent({
   const dayLog = useSelectedDietDay();
   const [showAddFood, setShowAddFood] = useState(false);
   const [selectedFood, setSelectedFood] = useState<DietFood | null>(null);
+  const [pendingPhotoAsset, setPendingPhotoAsset] = useState<{
+    photoName: string;
+    photoUri: string;
+  } | null>(null);
 
   const { data } = useQuery({
     queryKey: ["student-diet-current"],
@@ -958,23 +968,37 @@ function DietMealDrawerContent({
   );
   const consumedTotal = getMealConsumedMacros(mealLog);
   const allDone = meal.foods.every((food) => getFoodLog(mealLog, food.id));
+  const mealConfirmed = mealLog?.status === "done";
+  const mealSkipped = mealLog?.status === "skipped";
+  const mealLocked = mealConfirmed || mealSkipped;
   const mealPhotoUri = mealLog?.photoUri;
   const mealPhotoName = mealLog?.photoName;
+  const mealPhotoObservation = mealLog?.observation || "";
+  const mealPhotoPreviewUri =
+    mealPhotoUri || resolveApiUrl(mealLog?.photoUrl) || mealLog?.photoUrl;
 
   async function persistMealPhotoIfNeeded() {
-    if (!session?.token || !mealPhotoUri) return;
+    if (!session?.token) return;
 
-    const uploadResult = await uploadDietMealPhoto(session.token, mealPhotoUri, {
-      name: mealPhotoName,
-    });
+    let photoUrl = mealLog?.photoUrl || "";
+
+    if (mealPhotoUri) {
+      const uploadResult = await uploadDietMealPhoto(session.token, mealPhotoUri, {
+        name: mealPhotoName,
+      });
+      photoUrl = uploadResult.url;
+    }
+
+    if (!photoUrl) return;
 
     await saveDietMealPhoto(session.token, meal.id, {
-      photoUrl: uploadResult.url,
+      photoUrl,
       photoName: mealPhotoName,
+      observation: mealPhotoObservation,
     });
   }
 
-  async function chooseMealPhoto() {
+  async function pickMealPhotoFromLibrary() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -985,11 +1009,36 @@ function DietMealDrawerContent({
     });
     if (!result.canceled) {
       const asset = result.assets[0];
-      setMealPhoto(meal.id, {
+      setPendingPhotoAsset({
         photoName: asset.fileName ?? "refeicao.jpg",
         photoUri: asset.uri,
       });
     }
+  }
+
+  async function pickMealPhotoFromCamera() {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) return;
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [4, 5],
+      quality: 0.88,
+    });
+    if (!result.canceled) {
+      const asset = result.assets[0];
+      setPendingPhotoAsset({
+        photoName: asset.fileName ?? "refeicao.jpg",
+        photoUri: asset.uri,
+      });
+    }
+  }
+
+  function chooseMealPhoto() {
+    Alert.alert("Anexar imagem", "Escolha como deseja registrar a refeição.", [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Galeria", onPress: pickMealPhotoFromLibrary },
+      { text: "Câmera", onPress: pickMealPhotoFromCamera },
+    ]);
   }
 
   const handleMarkAll = async () => {
@@ -1047,11 +1096,14 @@ function DietMealDrawerContent({
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Pressable
               className="h-11 w-11 items-center justify-center rounded-full border border-border-subtle bg-bg-surface"
+              disabled={mealLocked}
               onPress={() => resetMutation.mutate(meal.id)}
+              style={mealLocked ? { opacity: 0.4 } : undefined}
             >
               <ArrowCounterClockwise color="#A78BFA" size={18} weight="bold" />
             </Pressable>
             <Pressable
+              disabled={mealLocked}
               onPress={confirmSkip}
               style={{
                 flexDirection: "row",
@@ -1063,6 +1115,7 @@ function DietMealDrawerContent({
                 borderRadius: 999,
                 paddingHorizontal: 12,
                 paddingVertical: 10,
+                opacity: mealLocked ? 0.45 : 1,
               }}
             >
               <Prohibit color="#FB7185" size={14} weight="bold" />
@@ -1112,6 +1165,7 @@ function DietMealDrawerContent({
           return (
             <Pressable
               key={food.id}
+              disabled={mealLocked}
               onPress={() => setSelectedFood(food)}
               style={{
                 alignItems: "center",
@@ -1229,30 +1283,53 @@ function DietMealDrawerContent({
           gap: 10,
         }}
       >
-        {mealPhotoName ? (
-          <View
+        {mealPhotoPreviewUri ? (
+          <Pressable
             style={{
               backgroundColor: "rgba(34,197,94,.08)",
               borderWidth: 1,
               borderColor: "rgba(34,197,94,.2)",
-              borderRadius: 12,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
+              borderRadius: 20,
+              overflow: "hidden",
             }}
+            onPress={() =>
+              setPendingPhotoAsset({
+                photoName: mealPhotoName || "refeicao.jpg",
+                photoUri: mealPhotoPreviewUri,
+              })
+            }
           >
-            <AppText className="text-[12px] font-semibold text-green-500">
-              Foto da refeição anexada
-            </AppText>
-            <AppText className="text-[11px] text-text-muted">
-              {mealPhotoName}
-            </AppText>
-          </View>
+            <Image
+              source={{ uri: mealPhotoPreviewUri }}
+              contentFit="cover"
+              style={{ width: "100%", height: 164 }}
+            />
+            <View style={{ paddingHorizontal: 12, paddingVertical: 11 }}>
+              <AppText className="text-[12px] font-semibold text-green-500">
+                Foto da refeição anexada
+              </AppText>
+              <AppText className="mt-1 text-[11px] text-text-muted">
+                {mealPhotoName || "Toque para revisar a imagem"}
+              </AppText>
+              {mealPhotoObservation ? (
+                <AppText className="mt-2 text-[11px] leading-[17px] text-text-main">
+                  {mealPhotoObservation}
+                </AppText>
+              ) : (
+                <AppText className="mt-2 text-[11px] text-text-muted">
+                  Toque para adicionar ou editar uma observação.
+                </AppText>
+              )}
+            </View>
+          </Pressable>
         ) : null}
 
         <View style={{ flexDirection: "row", gap: 8 }}>
           <Pressable
             className="h-12 w-12 items-center justify-center rounded-xl border border-border-subtle bg-bg-surface"
+            disabled={mealLocked}
             onPress={chooseMealPhoto}
+            style={mealLocked ? { opacity: 0.45 } : undefined}
           >
             <Camera
               color={mealPhotoUri ? "#22C55E" : "#A1A1AA"}
@@ -1260,7 +1337,16 @@ function DietMealDrawerContent({
               weight="bold"
             />
           </Pressable>
-          {allDone ? (
+          {mealLocked ? (
+            <AppButton
+              fullWidth
+              className="flex-1"
+              onPress={onClose}
+              variant="secondary"
+            >
+              {mealConfirmed ? "Refeição confirmada" : "Refeição pulada"}
+            </AppButton>
+          ) : allDone ? (
             <AppButton fullWidth className="flex-1" onPress={onClose}>
               Refeição concluída
             </AppButton>
@@ -1288,6 +1374,22 @@ function DietMealDrawerContent({
           food={selectedFood}
           mealId={meal.id}
           onClose={() => setSelectedFood(null)}
+        />
+      ) : null}
+      {pendingPhotoAsset ? (
+        <DietMealPhotoModal
+          initialObservation={mealPhotoObservation}
+          mealName={meal.name}
+          onClose={() => setPendingPhotoAsset(null)}
+          onConfirm={({ observation }) => {
+            setMealPhoto(meal.id, {
+              photoName: pendingPhotoAsset.photoName,
+              photoUri: pendingPhotoAsset.photoUri,
+              observation,
+            });
+            setPendingPhotoAsset(null);
+          }}
+          photoUri={pendingPhotoAsset.photoUri}
         />
       ) : null}
     </>

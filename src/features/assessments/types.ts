@@ -2,6 +2,12 @@ export type AssessmentStatus = 'pending' | 'sent' | 'received' | 'analysis' | 'a
 
 export type AssessmentFieldType = 'text' | 'long_text' | 'number' | 'select' | 'radio' | 'checkbox' | 'paragraph';
 
+export type AssessmentFieldOption = {
+  id: string;
+  label: string;
+  imageUrl?: string;
+};
+
 export type AssessmentFilter = 'pending' | 'analysis' | 'done' | 'all';
 
 export type AssessmentField = {
@@ -10,7 +16,8 @@ export type AssessmentField = {
   description?: string;
   type: AssessmentFieldType;
   required: boolean;
-  options?: string[];
+  imageUrl?: string;
+  options?: (string | AssessmentFieldOption)[];
 };
 
 export type AssessmentQuestionnaire = {

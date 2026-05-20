@@ -75,6 +75,7 @@ export type MealLog = {
   photoUrl?: string;
   photoUri?: string;
   photoName?: string;
+  observation?: string;
 };
 
 export type DietDayLog = {

@@ -1,4 +1,4 @@
-import { CheckCircle, Clock, Fire, Footprints, Heartbeat, Pause, Play, TrendUp, X } from 'phosphor-react-native';
+import { CheckCircle, Clock, Fire, Footprints, Pause, Play, TrendUp, X } from 'phosphor-react-native';
 import * as Location from 'expo-location';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -50,17 +50,9 @@ function fmtTime(s: number) {
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
-const HR_ZONES = [
-  { name: 'Repouso',     min: 0,   max: 100, color: '#6B7280' },
-  { name: 'Leve',        min: 100, max: 120, color: '#22C55E' },
-  { name: 'Aeróbico',   min: 120, max: 150, color: '#38BDF8' },
-  { name: 'Anaeróbico', min: 150, max: 170, color: '#F59E0B' },
-  { name: 'Máximo',      min: 170, max: 999, color: '#FB7185' },
-];
-
-function getZone(hr: number) {
-  return HR_ZONES.find(z => hr >= z.min && hr < z.max) ?? HR_ZONES[0];
-}
+const STEP_LENGTH_METERS = 0.78;
+const MIN_MOVEMENT_DISTANCE_KM = 0.004;
+const MAX_JUMP_DISTANCE_KM = 0.35;
 
 // ─── Leaflet map (CartoDB Dark Matter) ──────────────────────────────────────
 function buildMapHtml(color: string, centerLat: number, centerLng: number) {
@@ -85,18 +77,27 @@ function buildMapHtml(color: string, centerLat: number, centerLng: number) {
     var map=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true})
       .setView([${centerLat},${centerLng}],16);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',{maxZoom:19,subdomains:'abcd'}).addTo(map);
-    var coords=[];
+    var segments=[[]];
     var glow=L.polyline([],{color:'${color}',weight:9,opacity:.18,lineCap:'round'}).addTo(map);
     var line=L.polyline([],{color:'${color}',weight:4,opacity:.95,lineCap:'round'}).addTo(map);
     var startDot=null,liveMarker=null;
     var liveIcon=L.divIcon({html:'<div style="width:14px;height:14px;position:relative;display:flex;align-items:center;justify-content:center"><div class="ring"></div><div class="dot"></div></div>',className:'',iconSize:[14,14],iconAnchor:[7,7]});
+    function syncLines(){
+      line.setLatLngs(segments.filter(function(segment){return segment.length>0;}));
+      glow.setLatLngs(segments.filter(function(segment){return segment.length>0;}));
+    }
+    window.startPauseGap=function(){
+      if(segments[segments.length-1].length>0){segments.push([])}
+    };
     window.addCoord=function(lat,lng){
-      coords.push([lat,lng]);
-      line.setLatLngs(coords);glow.setLatLngs(coords);
-      if(coords.length===1){startDot=L.circleMarker([lat,lng],{radius:5,fillColor:'#22C55E',color:'#fff',weight:2.5,fillOpacity:1}).addTo(map)}
+      if(!segments.length){segments=[[]]}
+      segments[segments.length-1].push([lat,lng]);
+      syncLines();
+      var flattened=segments.flat();
+      if(flattened.length===1){startDot=L.circleMarker([lat,lng],{radius:5,fillColor:'#22C55E',color:'#fff',weight:2.5,fillOpacity:1}).addTo(map)}
       if(liveMarker)map.removeLayer(liveMarker);
       liveMarker=L.marker([lat,lng],{icon:liveIcon,zIndexOffset:1000}).addTo(map);
-      try{if(coords.length>2){map.fitBounds(line.getBounds(),{padding:[44,44],animate:true,duration:.6,maxZoom:17})}else{map.setView([lat,lng],16,{animate:true,duration:.5})}}catch(e){}
+      try{if(flattened.length>2){map.fitBounds(line.getBounds(),{padding:[44,44],animate:true,duration:.6,maxZoom:17})}else{map.setView([lat,lng],16,{animate:true,duration:.5})}}catch(e){}
     };
   </script>
 </body>
@@ -115,8 +116,8 @@ export function RunActiveScreen() {
   );
 
   const [elapsed, setElapsed] = useState(0);
+  const [pausedSeconds, setPausedSeconds] = useState(0);
   const [running, setRunning] = useState(true);
-  const [phase, setPhase] = useState<'warmup' | 'active' | 'cooldown'>('warmup');
   const [showStop, setShowStop] = useState(false);
   const [mapReady, setMapReady] = useState(false);
 
@@ -128,14 +129,16 @@ export function RunActiveScreen() {
   const coordsRef    = useRef<Coordinate[]>([]);
   const distRef      = useRef(0);
   const calsRef      = useRef(0);
-  const maxHrRef     = useRef(0);
   const startedAtRef = useRef(new Date().toISOString());
-  const phaseRef     = useRef<'warmup' | 'active' | 'cooldown'>('warmup');
   const elapsedRef   = useRef(0);
+  const pausedSecondsRef = useRef(0);
   const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const webViewRef   = useRef<WebView>(null);
   const runningRef   = useRef(true);
   const usingSimRef  = useRef(false); // true when GPS permission denied
+  const lastTrackedCoordRef = useRef<Coordinate | null>(null);
+  const ignoreNextCoordRef = useRef(false);
+  const latestPreviewCoordRef = useRef<Coordinate | null>(null);
 
   // keep runningRef in sync so GPS callback can check it
   useEffect(() => { runningRef.current = running; }, [running]);
@@ -143,7 +146,6 @@ export function RunActiveScreen() {
   // Display metrics
   const [displayKm,    setDisplayKm]    = useState(0);
   const [displayKcal,  setDisplayKcal]  = useState(0);
-  const [displayHr,    setDisplayHr]    = useState(130);
   const [displayPace,  setDisplayPace]  = useState('--:--/km');
   const [displaySpeed, setDisplaySpeed] = useState(0);
   const [displaySteps, setDisplaySteps] = useState(0);
@@ -152,6 +154,52 @@ export function RunActiveScreen() {
     () => buildMapHtml(type.color, mapCenter.lat, mapCenter.lng),
     [type.color, mapCenter],
   );
+
+  const pushCoordToMap = useCallback((coord: Coordinate) => {
+    latestPreviewCoordRef.current = coord;
+    if (mapReady) {
+      webViewRef.current?.injectJavaScript(`window.addCoord(${coord.lat},${coord.lng});true;`);
+    }
+  }, [mapReady]);
+
+  useEffect(() => {
+    if (!mapReady || !latestPreviewCoordRef.current) return;
+    const coord = latestPreviewCoordRef.current;
+    webViewRef.current?.injectJavaScript(`window.addCoord(${coord.lat},${coord.lng});true;`);
+  }, [mapReady]);
+
+  const registerTrackedCoord = useCallback((coord: Coordinate) => {
+    if (!mapCenterSetRef.current) {
+      mapCenterSetRef.current = true;
+      setMapCenter({ lat: coord.lat, lng: coord.lng });
+    }
+
+    if (ignoreNextCoordRef.current) {
+      ignoreNextCoordRef.current = false;
+      lastTrackedCoordRef.current = coord;
+      coordsRef.current = [...coordsRef.current, coord];
+      pushCoordToMap(coord);
+      return;
+    }
+
+    const previousTracked = lastTrackedCoordRef.current;
+    if (!previousTracked) {
+      lastTrackedCoordRef.current = coord;
+      coordsRef.current = [...coordsRef.current, coord];
+      pushCoordToMap(coord);
+      return;
+    }
+
+    const d = haversineKm(previousTracked, coord);
+    if (d < MIN_MOVEMENT_DISTANCE_KM || d > MAX_JUMP_DISTANCE_KM) {
+      return;
+    }
+
+    distRef.current += d;
+    lastTrackedCoordRef.current = coord;
+    coordsRef.current = [...coordsRef.current, coord];
+    pushCoordToMap(coord);
+  }, [pushCoordToMap]);
 
   // ── Real GPS setup ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -165,22 +213,27 @@ export function RunActiveScreen() {
         return;
       }
 
-      // get initial position to center the map correctly
       try {
-        const initial = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
+        const lastKnown = await Location.getLastKnownPositionAsync({
+          maxAge: 1000 * 60 * 5,
+          requiredAccuracy: 250,
         });
-        if (!mapCenterSetRef.current) {
+        if (lastKnown && !mapCenterSetRef.current) {
           mapCenterSetRef.current = true;
-          setMapCenter({ lat: initial.coords.latitude, lng: initial.coords.longitude });
+          setMapCenter({ lat: lastKnown.coords.latitude, lng: lastKnown.coords.longitude });
+          pushCoordToMap({
+            lat: lastKnown.coords.latitude,
+            lng: lastKnown.coords.longitude,
+            timestamp: new Date(lastKnown.timestamp).toISOString(),
+          });
         }
       } catch {
-        // if initial fix fails, map will pan to real location on first watchPosition update
+        // ignore and wait for live coordinates
       }
 
       sub = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.BestForNavigation,
+          accuracy: Location.Accuracy.Balanced,
           distanceInterval: 3,
           timeInterval: 1000,
         },
@@ -192,84 +245,105 @@ export function RunActiveScreen() {
             lng: position.coords.longitude,
             timestamp: new Date(position.timestamp).toISOString(),
           };
-
-          // center map on very first real fix if we didn't get it from getCurrentPosition
-          if (!mapCenterSetRef.current) {
-            mapCenterSetRef.current = true;
-            setMapCenter({ lat: coord.lat, lng: coord.lng });
-          }
-
-          const prev = coordsRef.current;
-          if (prev.length > 0) {
-            const d = haversineKm(prev[prev.length - 1], coord);
-            if (d < 0.5) distRef.current += d; // ignore GPS jumps >500 m
-          }
-          coordsRef.current = [...prev, coord];
-
-          webViewRef.current?.injectJavaScript(`window.addCoord(${coord.lat},${coord.lng});true;`);
+          registerTrackedCoord(coord);
         },
       );
+
+      try {
+        const initial = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+          maximumAge: 15000,
+        });
+        registerTrackedCoord({
+          lat: initial.coords.latitude,
+          lng: initial.coords.longitude,
+          timestamp: new Date(initial.timestamp).toISOString(),
+        });
+      } catch {
+        // if the first live fix delays, we still show the last known center immediately
+      }
     })();
 
     return () => { sub?.remove(); };
-  }, []);
+  }, [pushCoordToMap, registerTrackedCoord]);
 
   // ── Timer tick (drives elapsed + display metrics + simulation fallback) ────
   const tick = useCallback(() => {
-    const next = (elapsedRef.current += 1);
-    setElapsed(next);
+    if (runningRef.current) {
+      const next = (elapsedRef.current += 1);
+      setElapsed(next);
 
-    if (next === 120)  { phaseRef.current = 'active';   setPhase('active'); }
-    if (next === 1500) { phaseRef.current = 'cooldown'; setPhase('cooldown'); }
-
-    // simulation fallback when GPS permission denied
-    if (usingSimRef.current) {
-      const coord = simulateCoord(next);
-      const prev = coordsRef.current;
-      if (prev.length > 0) distRef.current += haversineKm(prev[prev.length - 1], coord);
-      coordsRef.current = [...prev, coord];
-      if (next % 2 === 0) {
-        webViewRef.current?.injectJavaScript(`window.addCoord(${coord.lat},${coord.lng});true;`);
+      // simulation fallback when GPS permission denied
+      if (usingSimRef.current) {
+        const coord = simulateCoord(next);
+        const previousTracked = lastTrackedCoordRef.current;
+        if (previousTracked) {
+          const delta = haversineKm(previousTracked, coord);
+          if (delta >= MIN_MOVEMENT_DISTANCE_KM && delta <= MAX_JUMP_DISTANCE_KM) {
+            distRef.current += delta;
+            coordsRef.current = [...coordsRef.current, coord];
+            if (next % 2 === 0) {
+              pushCoordToMap(coord);
+            }
+          }
+        } else {
+          coordsRef.current = [...coordsRef.current, coord];
+          if (next % 2 === 0) {
+            pushCoordToMap(coord);
+          }
+        }
+        lastTrackedCoordRef.current = coord;
       }
+
+      calsRef.current = Math.round(distRef.current * 63);
+
+      setDisplayKm(Math.round(distRef.current * 100) / 100);
+      setDisplayKcal(calsRef.current);
+      setDisplayPace(calcPace(distRef.current, next));
+      setDisplaySpeed(Math.round((distRef.current / Math.max(next, 1)) * 3600 * 10) / 10);
+      setDisplaySteps(type.id === 'bike' ? 0 : Math.round((distRef.current * 1000) / STEP_LENGTH_METERS));
+      return;
     }
 
-    calsRef.current = Math.round(distRef.current * 63);
-
-    const base = phaseRef.current === 'warmup' ? 130 : phaseRef.current === 'active' ? 158 : 135;
-    const hr = base + Math.round(Math.sin(next / 22) * 8);
-    if (hr > maxHrRef.current) maxHrRef.current = hr;
-
-    setDisplayKm(Math.round(distRef.current * 100) / 100);
-    setDisplayKcal(calsRef.current);
-    setDisplayHr(hr);
-    setDisplayPace(calcPace(distRef.current, next));
-    setDisplaySpeed(Math.round((distRef.current / next) * 3600 * 10) / 10);
-    setDisplaySteps(Math.round(next * 2.75));
-  }, []);
+    const nextPaused = pausedSecondsRef.current + 1;
+    pausedSecondsRef.current = nextPaused;
+    setPausedSeconds(nextPaused);
+  }, [pushCoordToMap, type.id]);
 
   useEffect(() => {
-    if (running) {
-      timerRef.current = setInterval(tick, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
+    timerRef.current = setInterval(tick, 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [running, tick]);
+  }, [tick]);
+
+  const toggleRunning = useCallback(() => {
+    setRunning((current) => {
+      const next = !current;
+      runningRef.current = next;
+      if (next) {
+        ignoreNextCoordRef.current = true;
+        lastTrackedCoordRef.current = null;
+        webViewRef.current?.injectJavaScript('window.startPauseGap && window.startPauseGap();true;');
+      }
+      return next;
+    });
+  }, []);
 
   const handleFinish = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     setRunning(false);
+    runningRef.current = false;
     const el = elapsedRef.current;
     setCompletedSession({
       type,
       coords: coordsRef.current.filter((_, i) => i % 2 === 0),
       elapsed: el,
+      pausedSeconds: pausedSecondsRef.current,
       distanceKm: distRef.current,
       calories: calsRef.current,
       avgPace: calcPace(distRef.current, el),
       avgSpeedKmh: Math.round((distRef.current / el) * 3600 * 10) / 10,
-      avgHr: displayHr,
-      maxHr: maxHrRef.current,
+      avgHr: 0,
+      maxHr: 0,
       steps: displaySteps,
       startedAt: startedAtRef.current,
       finishedAt: new Date().toISOString(),
@@ -277,21 +351,13 @@ export function RunActiveScreen() {
       notes: '',
     });
     router.replace('/(app)/run/summary' as any);
-  }, [displayHr, displaySteps, type, setCompletedSession]);
+  }, [displaySteps, type, setCompletedSession]);
 
-  const phaseLabel = phase === 'warmup' ? 'Aquecimento' : phase === 'active' ? 'Ativo' : 'Desaceleração';
-  const phaseColor = phase === 'warmup' ? '#38BDF8' : phase === 'active' ? type.color : '#22C55E';
-  const zone = getZone(displayHr);
-
-  const primaryMetric = type.id === 'hiit'
-    ? String(Math.floor(elapsed / 180))
-    : displayKm.toFixed(2);
+  const primaryMetric = displayKm.toFixed(2);
 
   const speedVal = type.id === 'bike'
     ? `${displaySpeed} km/h`
-    : type.id === 'hiit'
-      ? `${elapsed % 60}s`
-      : displayPace;
+    : displayPace;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#050507' }}>
@@ -392,9 +458,9 @@ export function RunActiveScreen() {
                   paddingVertical: 8,
                 }}
               >
-                <View style={{ width: 7, height: 7, borderRadius: 99, backgroundColor: running ? phaseColor : '#71717A' }} />
-                <AppText className="text-[10px] font-bold uppercase" style={{ color: running ? phaseColor : '#A1A1AA', letterSpacing: 1.6 }}>
-                  {running ? phaseLabel : 'Pausado'}
+                <View style={{ width: 7, height: 7, borderRadius: 99, backgroundColor: running ? type.color : '#71717A' }} />
+                <AppText className="text-[10px] font-bold uppercase" style={{ color: running ? type.color : '#A1A1AA', letterSpacing: 1.6 }}>
+                  {running ? type.label : 'Pausado'}
                 </AppText>
               </View>
             </View>
@@ -443,8 +509,8 @@ export function RunActiveScreen() {
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
               {[
                 { label: type.speedLabel, value: speedVal, color: type.color, icon: TrendUp },
-                { label: 'FC', value: `${displayHr} bpm`, color: '#FB7185', icon: Heartbeat },
-                { label: 'Calorias', value: `${displayKcal} kcal`, color: '#F59E0B', icon: Fire },
+                { label: 'Passos', value: displaySteps.toLocaleString('pt-BR'), color: '#22C55E', icon: Footprints },
+                { label: 'Kcal média', value: `${displayKcal} kcal`, color: '#F59E0B', icon: Fire },
               ].map(metric => {
                 const Icon = metric.icon;
                 return (
@@ -486,20 +552,13 @@ export function RunActiveScreen() {
                 paddingVertical: 12,
               }}
             >
-              <View style={{ width: 9, height: 9, borderRadius: 99, backgroundColor: zone.color }} />
-              <AppText className="text-[12px] font-bold" style={{ color: zone.color }}>
-                {zone.name}
+              <View style={{ width: 9, height: 9, borderRadius: 99, backgroundColor: type.color }} />
+              <AppText className="text-[12px] font-bold" style={{ color: type.color }}>
+                {running ? 'Sessão em andamento' : 'Sessão pausada'}
               </AppText>
-              <AppText className="text-[12px] text-text-muted">Zona cardíaca</AppText>
-              <View style={{ flex: 1 }} />
-              {type.id !== 'hiit' ? (
-                <View className="flex-row items-center gap-1.5">
-                  <Footprints size={14} color="#A1A1AA" weight="bold" />
-                  <AppText className="text-[12px] text-text-muted">
-                    {displaySteps.toLocaleString('pt-BR')}
-                  </AppText>
-                </View>
-              ) : null}
+              <AppText className="text-[12px] text-text-muted">
+                {running ? 'Continue para registrar o cardio' : `Pausa em ${fmtTime(pausedSeconds)}`}
+              </AppText>
             </View>
           </View>
 
@@ -514,7 +573,7 @@ export function RunActiveScreen() {
             }}
           >
             <Pressable
-              onPress={() => setRunning(r => !r)}
+              onPress={toggleRunning}
               style={({ pressed }) => ({
                 width: 64,
                 height: 64,
@@ -580,7 +639,7 @@ export function RunActiveScreen() {
                 Parar atividade?
               </AppText>
               <AppText className="text-center text-[13px] text-text-muted">
-                {fmtTime(elapsed)} · {displayKm.toFixed(2)} km percorridos
+                {fmtTime(elapsed)} ativos · {fmtTime(pausedSeconds)} em pausa · {displayKm.toFixed(2)} km
               </AppText>
             </View>
             <View style={{ gap: 10 }}>

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import { mockAssessments } from '../data/assessments';
 import { Assessment, AssessmentAnswerValue, AssessmentDraft, AssessmentUploadAsset } from '../types';
+import { getOptionLabel } from '../utils';
 
 type AssessmentsStore = {
   assessments: Assessment[];
@@ -36,9 +37,9 @@ export function createAssessmentDraft(assessment: Assessment): AssessmentDraft {
   const answers = Object.fromEntries(
     questions.map((field) => {
       if (!submitted) return [field.id, field.type === 'checkbox' ? [] : ''];
-      if (field.type === 'checkbox') return [field.id, field.options?.slice(0, 2) ?? []];
+      if (field.type === 'checkbox') return [field.id, (field.options?.slice(0, 2) ?? []).map(getOptionLabel)];
       if (field.type === 'number') return [field.id, '4'];
-      if (field.type === 'select' || field.type === 'radio') return [field.id, field.options?.[0] ?? 'Respondido'];
+      if (field.type === 'select' || field.type === 'radio') return [field.id, getOptionLabel(field.options?.[0] ?? 'Respondido')];
       return [field.id, 'Respondido no envio anterior.'];
     })
   );
@@ -49,10 +50,6 @@ export function createAssessmentDraft(assessment: Assessment): AssessmentDraft {
     exams,
     submitted,
   };
-}
-
-function ensureDraft(drafts: Record<string, AssessmentDraft>, assessment: Assessment) {
-  return drafts[assessment.id] ?? createAssessmentDraft(assessment);
 }
 
 export const useAssessmentsStore = create<AssessmentsStore>((set, get) => ({

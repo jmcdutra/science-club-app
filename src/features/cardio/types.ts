@@ -18,8 +18,6 @@ export const CARDIO_TYPES: CardioTypeConfig[] = [
   { id: 'corrida',   label: 'Corrida',   icon: 'run',  color: '#8B5CF6', rgb: '139,92,246',  primaryMetricLabel: 'QUILÔMETROS', speedLabel: 'Pace' },
   { id: 'caminhada', label: 'Caminhada', icon: 'walk', color: '#22C55E', rgb: '34,197,94',   primaryMetricLabel: 'QUILÔMETROS', speedLabel: 'Pace' },
   { id: 'bike',      label: 'Ciclismo',  icon: 'bike', color: '#38BDF8', rgb: '56,189,248',  primaryMetricLabel: 'QUILÔMETROS', speedLabel: 'Velocidade' },
-  { id: 'hiit',      label: 'HIIT',      icon: 'hiit', color: '#F59E0B', rgb: '245,158,11',  primaryMetricLabel: 'ROUNDS',      speedLabel: 'Intervalo' },
-  { id: 'natacao',   label: 'Natação',   icon: 'swim', color: '#22D3EE', rgb: '34,211,238',  primaryMetricLabel: 'QUILÔMETROS', speedLabel: 'Ritmo' },
 ];
 
 export interface Coordinate {
@@ -36,6 +34,7 @@ export interface CardioActivityDTO {
   started_at: string;
   finished_at: string | null;
   elapsed_seconds: number;
+  paused_seconds?: number;
   distance_km: number;
   calories: number;
   avg_pace: string;
@@ -67,6 +66,7 @@ export interface ActiveCardioSession {
   type: CardioTypeConfig;
   coords: Coordinate[];
   elapsed: number;
+  pausedSeconds: number;
   distanceKm: number;
   calories: number;
   avgPace: string;

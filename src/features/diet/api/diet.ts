@@ -1,4 +1,5 @@
 import { apiClient } from '@/src/shared/api/apiClient';
+import type { StudentAppAccessLockDTO } from '../../workouts/api/workouts';
 import type {
   DietAdherenceResponse,
   DietDayLog,
@@ -10,6 +11,7 @@ export type StudentDietCurrentResponse = {
   hasAccess: boolean;
   reason: 'plan_excludes_diet' | 'diet_not_ready' | null;
   whatsappUpgradeUrl?: string;
+  appAccessLock?: StudentAppAccessLockDTO | null;
   diet: DietPlan | null;
   dayLog: DietDayLog | null;
 };
@@ -57,7 +59,7 @@ export async function consumeDietMeal(token: string, mealId: string) {
 export async function saveDietMealPhoto(
   token: string,
   mealId: string,
-  payload: { photoUrl: string; photoName?: string },
+  payload: { photoUrl: string; photoName?: string; observation?: string },
 ) {
   return apiClient<{ ok: boolean }>(`/api/student-diets/meals/${mealId}/photo`, {
     method: 'PUT',

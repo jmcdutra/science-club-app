@@ -48,6 +48,7 @@ export type WorkoutSheet = {
   goal: string;
   coach: string;
   updatedAt: string;
+  coverUrl?: string | null;
   sessions: WorkoutSession[];
 };
 

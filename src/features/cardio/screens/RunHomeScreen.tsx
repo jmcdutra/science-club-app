@@ -253,10 +253,12 @@ export function RunHomeScreen() {
                   opacity: pressed ? 0.78 : 1,
                 })}
               >
-                <View className="mb-2 h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: `rgba(${type.rgb}, 0.14)` }}>
-                  <CardioIcon name={type.icon} size={19} color={isSelected ? type.color : '#A1A1AA'} weight="bold" />
+                <View className="items-center">
+                  <View className="mb-2 h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: `rgba(${type.rgb}, 0.14)` }}>
+                    <CardioIcon name={type.icon} size={19} color={isSelected ? type.color : '#A1A1AA'} weight="bold" />
+                  </View>
                 </View>
-                <AppText className="text-[11px] font-bold" style={{ color: isSelected ? type.color : '#A1A1AA' }}>
+                <AppText className="text-center text-[11px] font-bold" style={{ color: isSelected ? type.color : '#A1A1AA' }}>
                   {type.label}
                 </AppText>
               </Pressable>

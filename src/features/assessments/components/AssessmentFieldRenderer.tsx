@@ -1,11 +1,12 @@
 import { CheckSquare, RadioButton, Square } from 'phosphor-react-native';
 import { type ReactNode, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Image, Pressable, TextInput, View } from 'react-native';
 
 import { AppText } from '@/src/shared/components/ui/AppText';
+import { resolveApiUrl } from '@/src/shared/api/apiClient';
 
 import { type AssessmentAnswerValue, type AssessmentField } from '../types';
-import { getFieldKeyboardType, isAnswerFilled } from '../utils';
+import { getFieldKeyboardType, getOptionImageUrl, getOptionLabel, isAnswerFilled } from '../utils';
 
 type Props = {
   field: AssessmentField;
@@ -31,40 +32,49 @@ export function AssessmentFieldRenderer({ field, value, onChange, onToggleOption
       <FieldShell field={field} missing={missing}>
         <View style={{ gap: 7 }}>
           {field.options?.map((option) => {
-            const active = value === option;
+            const optionLabel = getOptionLabel(option);
+            const optionImageUrl = resolveApiUrl(getOptionImageUrl(option));
+            const active = value === optionLabel;
             return (
               <Pressable
-                key={option}
+                key={typeof option === 'string' ? option : option.id}
                 accessibilityRole="button"
                 style={{
                   minHeight: 52,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 12,
                   borderRadius: 12,
                   borderWidth: 1,
                   borderColor: active ? '#8B5CF6' : '#1F1F23',
                   backgroundColor: active ? 'rgba(139,92,246,0.12)' : 'transparent',
                   paddingHorizontal: 14,
+                  paddingVertical: 14,
                 }}
-                onPress={() => onChange(option)}
+                onPress={() => onChange(optionLabel)}
               >
-                <RadioButton
-                  color={active ? '#A78BFA' : '#444444'}
-                  size={18}
-                  weight={active ? 'fill' : 'regular'}
-                />
-                <AppText
-                  style={{
-                    flex: 1,
-                    fontSize: 14,
-                    fontWeight: '500',
-                    color: active ? '#C4B5FD' : '#888888',
-                    lineHeight: 18,
-                  }}
-                >
-                  {option}
-                </AppText>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <RadioButton
+                    color={active ? '#A78BFA' : '#444444'}
+                    size={18}
+                    weight={active ? 'fill' : 'regular'}
+                  />
+                  <AppText
+                    style={{
+                      flex: 1,
+                      fontSize: 14,
+                      fontWeight: '500',
+                      color: active ? '#C4B5FD' : '#888888',
+                      lineHeight: 18,
+                    }}
+                  >
+                    {optionLabel}
+                  </AppText>
+                </View>
+                {optionImageUrl ? (
+                  <Image
+                    source={{ uri: optionImageUrl }}
+                    style={{ marginTop: 12, height: 156, width: '100%', borderRadius: 12 }}
+                    resizeMode="cover"
+                  />
+                ) : null}
               </Pressable>
             );
           })}
@@ -79,40 +89,49 @@ export function AssessmentFieldRenderer({ field, value, onChange, onToggleOption
       <FieldShell field={field} missing={missing}>
         <View style={{ gap: 7 }}>
           {field.options?.map((option) => {
-            const active = values.includes(option);
+            const optionLabel = getOptionLabel(option);
+            const optionImageUrl = resolveApiUrl(getOptionImageUrl(option));
+            const active = values.includes(optionLabel);
             return (
               <Pressable
-                key={option}
+                key={typeof option === 'string' ? option : option.id}
                 accessibilityRole="button"
                 style={{
                   minHeight: 52,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 12,
                   borderRadius: 12,
                   borderWidth: 1,
                   borderColor: active ? '#8B5CF6' : '#1F1F23',
                   backgroundColor: active ? 'rgba(139,92,246,0.12)' : 'transparent',
                   paddingHorizontal: 14,
+                  paddingVertical: 14,
                 }}
-                onPress={() => onToggleOption(option)}
+                onPress={() => onToggleOption(optionLabel)}
               >
-                {active ? (
-                  <CheckSquare color="#A78BFA" size={19} weight="fill" />
-                ) : (
-                  <Square color="#444444" size={19} weight="regular" />
-                )}
-                <AppText
-                  style={{
-                    flex: 1,
-                    fontSize: 14,
-                    fontWeight: '500',
-                    color: active ? '#C4B5FD' : '#888888',
-                    lineHeight: 18,
-                  }}
-                >
-                  {option}
-                </AppText>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  {active ? (
+                    <CheckSquare color="#A78BFA" size={19} weight="fill" />
+                  ) : (
+                    <Square color="#444444" size={19} weight="regular" />
+                  )}
+                  <AppText
+                    style={{
+                      flex: 1,
+                      fontSize: 14,
+                      fontWeight: '500',
+                      color: active ? '#C4B5FD' : '#888888',
+                      lineHeight: 18,
+                    }}
+                  >
+                    {optionLabel}
+                  </AppText>
+                </View>
+                {optionImageUrl ? (
+                  <Image
+                    source={{ uri: optionImageUrl }}
+                    style={{ marginTop: 12, height: 156, width: '100%', borderRadius: 12 }}
+                    resizeMode="cover"
+                  />
+                ) : null}
               </Pressable>
             );
           })}
@@ -233,6 +252,13 @@ function FieldShell({
           </AppText>
         )}
       </View>
+      {field.imageUrl ? (
+        <Image
+          source={{ uri: resolveApiUrl(field.imageUrl) ?? field.imageUrl }}
+          style={{ marginBottom: 12, height: 188, width: '100%', borderRadius: 16 }}
+          resizeMode="cover"
+        />
+      ) : null}
       {children}
     </View>
   );

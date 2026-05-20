@@ -23,7 +23,7 @@ type DietStore = {
   addWater: (amountMl: number) => void;
   setMealPhoto: (
     mealId: string,
-    payload: { photoUri?: string; photoName?: string },
+    payload: { photoUri?: string; photoName?: string; observation?: string },
   ) => void;
   addExtraFood: (mealId: string, food: DietFood) => void;
   logFood: (payload: {
@@ -110,6 +110,7 @@ export const useDietStore = create<DietStore>((set, get) => ({
         photoUrl: currentMealLog?.photoUrl,
         photoUri: payload.photoUri ?? currentMealLog?.photoUri,
         photoName: payload.photoName ?? currentMealLog?.photoName,
+        observation: payload.observation ?? currentMealLog?.observation,
       };
 
       return {
@@ -177,6 +178,7 @@ export const useDietStore = create<DietStore>((set, get) => ({
         photoUrl: currentMealLog?.photoUrl,
         photoUri: currentMealLog?.photoUri,
         photoName: currentMealLog?.photoName,
+        observation: currentMealLog?.observation,
       };
 
       return {
@@ -208,6 +210,8 @@ export const useDietStore = create<DietStore>((set, get) => ({
           ?.photoUri,
         photoName: dayLog.mealLogs.find((item) => item.mealId === mealId)
           ?.photoName,
+        observation: dayLog.mealLogs.find((item) => item.mealId === mealId)
+          ?.observation,
         foodLogs: foods.map((food) => ({
           foodId: food.id,
           selectedFoodId: food.id,
@@ -244,6 +248,8 @@ export const useDietStore = create<DietStore>((set, get) => ({
           ?.photoUri,
         photoName: dayLog.mealLogs.find((item) => item.mealId === mealId)
           ?.photoName,
+        observation: dayLog.mealLogs.find((item) => item.mealId === mealId)
+          ?.observation,
       };
 
       return {

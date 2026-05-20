@@ -18,12 +18,11 @@ import {
   View,
 } from "react-native";
 import * as Linking from "expo-linking";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Svg, {
   Defs,
   LinearGradient as SvgLinearGradient,
-  RadialGradient,
   Rect,
   Stop,
 } from "react-native-svg";
@@ -34,6 +33,7 @@ import { PageHeader } from "@/src/shared/components/layout/PageHeader";
 import { AppButton } from "@/src/shared/components/ui/AppButton";
 import { AppText } from "@/src/shared/components/ui/AppText";
 import { NotificationsModal } from "@/src/shared/components/ui/NotificationsModal";
+import { PendingFormAccessModal } from "@/src/shared/components/ui/PendingFormAccessModal";
 import { resolveApiUrl } from "@/src/shared/api/apiClient";
 import { useRefetchOnFocus } from "@/src/shared/hooks/useRefetchOnFocus";
 import { useAppTheme } from "@/src/shared/theme/appTheme";
@@ -130,8 +130,12 @@ function getWorkoutDayIndex(day: string) {
   return WEEK_DAY_NAMES.findIndex((item) => item === day);
 }
 
-function resolveWorkoutCardImage(session: WorkoutSessionDTO, index: number) {
-  const coverUrl = session.exercises[0]?.coverUrl;
+function resolveWorkoutCardImage(
+  session: WorkoutSessionDTO,
+  index: number,
+  workoutCoverUrl?: string | null,
+) {
+  const coverUrl = workoutCoverUrl || session.exercises[0]?.coverUrl;
   const resolvedCoverUrl = resolveApiUrl(coverUrl);
   return resolvedCoverUrl ? { uri: resolvedCoverUrl } : WORKOUT_IMAGES[index % WORKOUT_IMAGES.length];
 }
@@ -147,7 +151,7 @@ function StreakStrip({
   items,
   completedCount,
 }: {
-  items: Array<{ label: string; state: "done" | "today" | "scheduled" | "frozen" }>;
+  items: { label: string; state: "done" | "today" | "scheduled" | "frozen" }[];
   completedCount: number;
 }) {
 
@@ -314,33 +318,6 @@ function DrawerHeaderScrim() {
         width="100%"
         height="72%"
         fill="url(#drawerHeaderBottom)"
-      />
-    </Svg>
-  );
-}
-
-function CardLight() {
-  return (
-    <Svg pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-      <Defs>
-        <RadialGradient id="topRightLight" cx="92%" cy="8%" rx="52%" ry="48%">
-          <Stop offset="0" stopColor="#A78BFA" stopOpacity="0.18" />
-          <Stop offset="0.36" stopColor="#8B5CF6" stopOpacity="0.08" />
-          <Stop offset="1" stopColor="#8B5CF6" stopOpacity="0" />
-        </RadialGradient>
-        <RadialGradient id="bottomLeftLight" cx="6%" cy="96%" rx="40%" ry="36%">
-          <Stop offset="0" stopColor="#8B5CF6" stopOpacity="0.12" />
-          <Stop offset="0.44" stopColor="#8B5CF6" stopOpacity="0.05" />
-          <Stop offset="1" stopColor="#8B5CF6" stopOpacity="0" />
-        </RadialGradient>
-      </Defs>
-      <Rect x="0" y="0" width="100%" height="100%" fill="url(#topRightLight)" />
-      <Rect
-        x="0"
-        y="0"
-        width="100%"
-        height="100%"
-        fill="url(#bottomLeftLight)"
       />
     </Svg>
   );
@@ -831,7 +808,7 @@ export function WorkoutSheetsScreen() {
       return {
         sheet: primarySheet,
         session: workoutSession,
-        image: resolveWorkoutCardImage(workoutSession, index),
+        image: resolveWorkoutCardImage(workoutSession, index, primarySheet.coverUrl),
         label: `Treino ${String.fromCharCode(65 + index)}`,
         progress: getProgress(data, workoutSession.id),
         displayTitle: getDisplayTitle(workoutSession, index),
@@ -864,6 +841,24 @@ export function WorkoutSheetsScreen() {
 
     return todayItem ?? workoutItems[0] ?? null;
   }, [data, todaySession, workoutItems]);
+
+  const activeSessionPreview = useMemo(() => {
+    if (!data?.progressBySession || !workoutItems.length) return null;
+    const activeSessionId = Object.entries(data.progressBySession).find(
+      ([, progress]) => progress?.started_at && !progress?.finished_at,
+    )?.[0];
+
+    if (!activeSessionId) return null;
+    return workoutItems.find((item) => item.session.id === activeSessionId) ?? null;
+  }, [data?.progressBySession, workoutItems]);
+
+  useEffect(() => {
+    if (data?.appAccessLock?.enabled) return;
+    if (!activeSessionPreview) return;
+    router.replace(
+      `/(app)/workouts/${activeSessionPreview.sheet.id}/session?sessionId=${activeSessionPreview.session.id}&locked=1` as Href,
+    );
+  }, [activeSessionPreview, data?.appAccessLock?.enabled]);
 
   const weekSequence = useMemo(() => {
     const scheduledByDay = new Map<number, WorkoutPreview>();
@@ -910,6 +905,10 @@ export function WorkoutSheetsScreen() {
   });
 
   const handleStartAssessment = async () => {
+    if (data?.appAccessLock?.evaluationId) {
+      router.push(`/(app)/assessments/${data.appAccessLock.evaluationId}` as Href);
+      return;
+    }
     if (!session?.token || !session?.released_questionnaire?.id) return;
     try {
       setIsCreating(true);
@@ -931,6 +930,19 @@ export function WorkoutSheetsScreen() {
       `/(app)/workouts/${item.sheet.id}/session?sessionId=${item.session.id}` as Href,
     );
   };
+
+  if (data?.appAccessLock?.enabled) {
+    return (
+      <View className="flex-1 bg-bg-base">
+        <PendingFormAccessModal
+          visible
+          questionnaireTitle={data.appAccessLock.questionnaireTitle}
+          description={data.appAccessLock.message}
+          onSubmit={handleStartAssessment}
+        />
+      </View>
+    );
+  }
 
   if (!isLoading && !hasWorkoutAccess) {
     return (
@@ -988,6 +1000,12 @@ export function WorkoutSheetsScreen() {
     <>
       <View className="flex-1 bg-bg-base">
         <SafeAreaView className="flex-1" edges={["top", "bottom"]}>
+          <PendingFormAccessModal
+            visible={Boolean(data?.appAccessLock?.enabled)}
+            questionnaireTitle={data?.appAccessLock?.questionnaireTitle}
+            description={data?.appAccessLock?.message}
+            onSubmit={handleStartAssessment}
+          />
           <PageHeader
             title="Treinos"
             subtitle="Sua semana de performance"
