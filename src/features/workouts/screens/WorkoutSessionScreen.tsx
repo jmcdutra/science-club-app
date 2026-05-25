@@ -23,6 +23,7 @@ import {
   Pressable,
   ScrollView,
   TextInput,
+  useWindowDimensions,
   View,
   type ScrollView as ScrollViewType,
 } from "react-native";
@@ -111,6 +112,9 @@ function weightKey(eId: string, sId: string) {
 function repsKey(eId: string, sId: string) {
   return `${eId}:${sId}`;
 }
+function rirKey(eId: string, sId: string) {
+  return `${eId}:${sId}`;
+}
 
 function parseWeight(value?: string) {
   const match = value?.replace(",", ".").match(/\d+(\.\d+)?/);
@@ -135,6 +139,44 @@ function normalizeReps(value: string) {
   return Number.isFinite(direct) ? String(direct) : "10";
 }
 
+function normalizeRir(value?: string | number | null) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "";
+
+  const match = normalized.match(/\d+/);
+  return match?.[0] ?? "";
+}
+
+function formatSetExecutionLabel({
+  weight,
+  reps,
+  rir,
+  fallbackDuration,
+}: {
+  weight?: string;
+  reps?: string;
+  rir?: string;
+  fallbackDuration?: string;
+}) {
+  const normalizedWeight = getTrimmedText(weight);
+  const normalizedReps = getTrimmedText(reps);
+  const normalizedRir = normalizeRir(rir);
+
+  if (normalizedWeight && normalizedReps) {
+    return normalizedRir
+      ? `${normalizedWeight} x ${normalizedReps} (${normalizedRir} RIR)`
+      : `${normalizedWeight} x ${normalizedReps}`;
+  }
+
+  if (normalizedReps) {
+    return normalizedRir
+      ? `${normalizedReps} reps (${normalizedRir} RIR)`
+      : `${normalizedReps} reps`;
+  }
+
+  return fallbackDuration || "Carga livre";
+}
+
 function extractPreviousWeight(previous?: string) {
   const match = previous?.replace(",", ".").match(/\d+(\.\d+)?/);
   return match ? Number(match[0]) : null;
@@ -148,12 +190,14 @@ function buildHistoryPrefill(
         setId: string;
         performedWeightLabel: string;
         performedReps: number;
+        performedRir?: number;
       }[];
     }[];
   } | null,
 ) {
   const weightOverrides: Record<string, string> = {};
   const repsOverrides: Record<string, string> = {};
+  const rirOverrides: Record<string, string> = {};
 
   (entry?.exercises || []).forEach((exercise) => {
     exercise.sets.forEach((set) => {
@@ -164,10 +208,13 @@ function buildHistoryPrefill(
       if (set.performedReps > 0) {
         repsOverrides[setKey] = String(set.performedReps);
       }
+      if (set.performedRir !== undefined && set.performedRir !== null) {
+        rirOverrides[setKey] = String(set.performedRir);
+      }
     });
   });
 
-  return { weightOverrides, repsOverrides };
+  return { weightOverrides, repsOverrides, rirOverrides };
 }
 
 function getSetLabel(set: WorkoutSet, index: number) {
@@ -177,19 +224,9 @@ function getSetLabel(set: WorkoutSet, index: number) {
   return `Série ${index - 1}`;
 }
 
-function buildExerciseRecommendation(exercise: {
-  executionTips?: string[];
-  cue?: string;
-  description?: string;
-}) {
-  const tips = (exercise.executionTips ?? [])
-    .map((tip) => tip.trim())
-    .filter(Boolean);
-
-  if (tips.length > 0) return tips.join("\n");
-  if (exercise.cue?.trim()) return exercise.cue.trim();
-  if (exercise.description?.trim()) return exercise.description.trim();
-  return "Siga a orientação montada pela equipe para esta execução.";
+function getTrimmedText(value?: string | null) {
+  const normalized = String(value ?? "").trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function normalizeVideoEmbedUrl(video: WorkoutExerciseVideo) {
@@ -320,6 +357,8 @@ function ExerciseHelpSheet({
     cue: string;
     description?: string;
     executionTips?: string[];
+    commonExecutionErrors?: string;
+    observationsAndTips?: string;
     sets: WorkoutSet[];
   };
   helpVideos: {
@@ -330,18 +369,31 @@ function ExerciseHelpSheet({
     embedUrl?: string;
   }[];
 }) {
-  const exerciseRecommendation = buildExerciseRecommendation({
-    executionTips: exercise.executionTips,
-    cue: exercise.cue,
-    description: exercise.description,
-  });
+  const { height: screenHeight } = useWindowDimensions();
+  const maxSheetHeight = Math.round(screenHeight * 0.86);
+  const scrollAreaMaxHeight = Math.max(180, maxSheetHeight - 214 - 108);
+  const exerciseTitle = getTrimmedText(exercise.name) ?? "Exercício";
+  const executionCue = getTrimmedText(exercise.cue);
+  const descriptionText = getTrimmedText(exercise.description);
+  const commonExecutionErrors = getTrimmedText(exercise.commonExecutionErrors);
+  const observationsAndTips = getTrimmedText(exercise.observationsAndTips);
+  const exerciseMeta = [title, exercise.muscle, exercise.equipment]
+    .map((item) => getTrimmedText(item))
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <WorkoutNativeBottomSheet
       visible={visible}
       onVisibleChange={(next) => !next && onClose()}
     >
-      <View style={{ backgroundColor: "#090909", paddingBottom: 28 }}>
+      <View
+        style={{
+          backgroundColor: "#090909",
+          paddingBottom: 28,
+          maxHeight: maxSheetHeight,
+        }}
+      >
         <View
           style={{
             height: 214,
@@ -396,51 +448,36 @@ function ExerciseHelpSheet({
               className="font-heading text-[28px] font-bold text-white"
               style={{ letterSpacing: -0.5 }}
             >
-              {exercise.name}
+              {exerciseTitle}
             </AppText>
-            <AppText className="mt-1 text-xs font-medium text-white/55">
-              {title} · {exercise.muscle} · {exercise.equipment}
-            </AppText>
+            {exerciseMeta ? (
+              <AppText className="mt-1 text-xs font-medium text-white/55">
+                {exerciseMeta}
+              </AppText>
+            ) : null}
           </View>
         </View>
 
-        <View style={{ flexShrink: 1, minHeight: 0, maxHeight: "100%" }}>
+        <View style={{ flexShrink: 1, minHeight: 0 }}>
           <ScrollView
             bounces={false}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            style={{ maxHeight: scrollAreaMaxHeight }}
             contentContainerStyle={{
               paddingHorizontal: 20,
               paddingTop: 16,
-              paddingBottom: 12,
+              paddingBottom: 20,
               gap: 16,
             }}
-            showsVerticalScrollIndicator={false}
+            showsVerticalScrollIndicator
           >
             <View>
               <AppText className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
                 Execução
               </AppText>
-              <AppText className="text-sm leading-6 text-text-muted">
-                {exercise.description ?? exercise.cue}
-              </AppText>
-              {exercise.executionTips?.length ? (
-                <View className="mt-4 rounded-[16px] border border-brand-primary/20 bg-brand-primary/10 px-4 py-3">
-                  <AppText className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-brand-secondary">
-                    Orientações
-                  </AppText>
-                  <View className="gap-2">
-                    {exercise.executionTips.map((tip, index) => (
-                      <View key={`${tip}-${index}`} className="flex-row gap-2">
-                        <View className="mt-2 h-1.5 w-1.5 rounded-full bg-brand-secondary" />
-                        <AppText className="flex-1 text-sm leading-5 text-text-main">
-                          {tip}
-                        </AppText>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              ) : null}
               {helpVideos.length > 0 ? (
-                <View className="mt-4 gap-3">
+                <View className="mt-2 gap-3">
                   {helpVideos.map((video) => {
                     if (video.provider === "own") {
                       const directVideoUrl = resolveApiUrl(video.url);
@@ -514,16 +551,45 @@ function ExerciseHelpSheet({
                   })}
                 </View>
               ) : null}
+              {executionCue ? (
+                <AppText className="mt-3 text-sm leading-6 text-text-muted">
+                  {executionCue}
+                </AppText>
+              ) : null}
             </View>
 
-            <View>
-              <AppText className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
-                Recomendação
-              </AppText>
-              <AppText className="text-sm leading-6 text-text-muted">
-                {exerciseRecommendation}
-              </AppText>
-            </View>
+            {descriptionText ? (
+              <View>
+                <AppText className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
+                  Descrição
+                </AppText>
+                <AppText className="text-sm leading-6 text-text-muted">
+                  {descriptionText}
+                </AppText>
+              </View>
+            ) : null}
+
+            {commonExecutionErrors ? (
+              <View>
+                <AppText className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
+                  Erros Comuns de Execução
+                </AppText>
+                <AppText className="text-sm leading-6 text-text-muted">
+                  {commonExecutionErrors}
+                </AppText>
+              </View>
+            ) : null}
+
+            {observationsAndTips ? (
+              <View>
+                <AppText className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
+                  Observações e Dicas
+                </AppText>
+                <AppText className="text-sm leading-6 text-text-muted">
+                  {observationsAndTips}
+                </AppText>
+              </View>
+            ) : null}
           </ScrollView>
         </View>
 
@@ -847,6 +913,12 @@ export function WorkoutSessionScreen() {
       ? getWorkoutSession(workoutId, routeSessionId)
       : null;
   const currentSessionId = session?.id ?? routeSessionId ?? "";
+  const hasRouteSessionMismatch = Boolean(
+    remoteWorkout &&
+      routeSessionId &&
+      session?.id &&
+      routeSessionId !== session.id,
+  );
   const sessionExercises = session?.exercises.filter(Boolean) ?? [];
   const localSession =
     localWorkoutSheet?.sessions.find((item) => item.id === session?.id) ??
@@ -879,12 +951,14 @@ export function WorkoutSessionScreen() {
   const [repsOverrides, setRepsOverrides] = useState<Record<string, string>>(
     {},
   );
+  const [rirOverrides, setRirOverrides] = useState<Record<string, string>>({});
   const [setsByExercise, setSetsByExercise] = useState<
     Record<string, WorkoutSet[]>
   >({});
   const [setEditor, setSetEditor] = useState<SetEditorState | null>(null);
   const [weightDraft, setWeightDraft] = useState("");
   const [repsDraft, setRepsDraft] = useState("");
+  const [rirDraft, setRirDraft] = useState("");
   const [restElapsedSeconds, setRestElapsedSeconds] = useState(0);
   const [restTotal, setRestTotal] = useState(0);
   const [startedAt, setStartedAt] = useState<string | null>(null);
@@ -924,6 +998,12 @@ export function WorkoutSessionScreen() {
     exercise?.description ?? localExercise?.description;
   const exerciseExecutionTips =
     exercise?.executionTips ?? localExercise?.executionTips ?? [];
+  const exerciseCommonExecutionErrors =
+    exercise?.commonExecutionErrors ?? localExercise?.commonExecutionErrors;
+  const exerciseObservationsAndTips =
+    exercise?.observationsAndTips ?? localExercise?.observationsAndTips;
+  const exerciseSummaryText =
+    getTrimmedText(exerciseDescription) ?? getTrimmedText(exercise?.cue) ?? "";
   const sessionHistory = useMemo(
     () => currentWorkoutData?.historyBySession?.[currentSessionId] ?? [],
     [currentSessionId, currentWorkoutData?.historyBySession],
@@ -1029,6 +1109,20 @@ export function WorkoutSessionScreen() {
   }, [timerRunning, restLeft]);
 
   useEffect(() => {
+    if (!hasRouteSessionMismatch || !session) return;
+
+    const nextQuery = [
+      `sessionId=${session.id}`,
+      exerciseId ? `exerciseId=${exerciseId}` : null,
+      isLockedSession ? "locked=1" : null,
+    ]
+      .filter(Boolean)
+      .join("&");
+
+    router.replace(`/(app)/workouts/${workoutId}/session?${nextQuery}` as Href);
+  }, [exerciseId, hasRouteSessionMismatch, isLockedSession, session, workoutId]);
+
+  useEffect(() => {
     if (!remoteProgress) return;
     const syncTimestamp = remoteProgress.updated_at || remoteProgress.started_at;
     const catchUpSeconds =
@@ -1048,6 +1142,7 @@ export function WorkoutSessionScreen() {
       setCompletedByExercise({});
       setWeightOverrides({});
       setRepsOverrides({});
+      setRirOverrides({});
       setElapsed(0);
       setRestElapsedSeconds(0);
       setRestLeft(0);
@@ -1061,6 +1156,7 @@ export function WorkoutSessionScreen() {
     setCompletedByExercise(remoteProgress.completed_sets || {});
     setWeightOverrides(remoteProgress.weight_overrides || {});
     setRepsOverrides(remoteProgress.reps_overrides || {});
+    setRirOverrides(remoteProgress.rir_overrides || {});
     setElapsed(Number(remoteProgress.elapsed_seconds || 0) + catchUpSeconds);
     setRestElapsedSeconds(
       Number(remoteProgress.rest_elapsed_seconds || 0) + catchUpSeconds,
@@ -1097,13 +1193,17 @@ export function WorkoutSessionScreen() {
     if (workoutStarted || completedSetsTotal > 0) return;
     if (Object.keys(remoteProgress?.weight_overrides || {}).length > 0) return;
     if (Object.keys(remoteProgress?.reps_overrides || {}).length > 0) return;
+    if (Object.keys(remoteProgress?.rir_overrides || {}).length > 0) return;
 
     setWeightOverrides(historyPrefill.weightOverrides);
     setRepsOverrides(historyPrefill.repsOverrides);
+    setRirOverrides(historyPrefill.rirOverrides);
   }, [
     completedSetsTotal,
+    historyPrefill.rirOverrides,
     historyPrefill.repsOverrides,
     historyPrefill.weightOverrides,
+    remoteProgress?.rir_overrides,
     remoteProgress?.reps_overrides,
     remoteProgress?.weight_overrides,
     latestHistoryEntry,
@@ -1153,6 +1253,7 @@ export function WorkoutSessionScreen() {
         completed_sets: completedByExercise,
         weight_overrides: weightOverrides,
         reps_overrides: repsOverrides,
+        rir_overrides: rirOverrides,
         elapsed_seconds: elapsed,
         rest_elapsed_seconds: restElapsedSeconds,
         rest_left_seconds: restLeft,
@@ -1170,6 +1271,7 @@ export function WorkoutSessionScreen() {
     completedSetsTotal,
     weightOverrides,
     repsOverrides,
+    rirOverrides,
     elapsed,
     restElapsedSeconds,
     restLeft,
@@ -1190,6 +1292,7 @@ export function WorkoutSessionScreen() {
         completed_sets: completedByExercise,
         weight_overrides: weightOverrides,
         reps_overrides: repsOverrides,
+        rir_overrides: rirOverrides,
         elapsed_seconds: elapsed,
         rest_elapsed_seconds: restElapsedSeconds,
         rest_left_seconds: restLeft,
@@ -1222,18 +1325,26 @@ export function WorkoutSessionScreen() {
     if (completedSet) {
       const nextWeightKey = weightKey(exercise.id, completedSet.id);
       const nextRepsKey = repsKey(exercise.id, completedSet.id);
+      const nextRirKey = rirKey(exercise.id, completedSet.id);
       const fallbackWeight =
         weightOverrides[nextWeightKey] || getDisplayWeight(completedSet, completedSetIndex);
       const fallbackReps =
         repsOverrides[nextRepsKey] ||
         latestHistoryExercise?.sets[completedSetIndex]?.performedReps?.toString() ||
         normalizeReps(completedSet.reps);
+      const fallbackRir =
+        rirOverrides[nextRirKey] ||
+        normalizeRir(latestHistoryExercise?.sets[completedSetIndex]?.performedRir) ||
+        normalizeRir(completedSet.rir);
 
       if (fallbackWeight && !weightOverrides[nextWeightKey]) {
         setWeightOverrides((current) => ({ ...current, [nextWeightKey]: fallbackWeight }));
       }
       if (fallbackReps && !repsOverrides[nextRepsKey]) {
         setRepsOverrides((current) => ({ ...current, [nextRepsKey]: fallbackReps }));
+      }
+      if (fallbackRir && !rirOverrides[nextRirKey]) {
+        setRirOverrides((current) => ({ ...current, [nextRirKey]: fallbackRir }));
       }
     }
     setCompletedByExercise((c) => ({ ...c, [exercise.id]: next }));
@@ -1277,6 +1388,10 @@ export function WorkoutSessionScreen() {
     return repsOverrides[repsKey(eId, sId)] ?? pr;
   }
 
+  function getSetRir(eId: string, sId: string, plannedRir?: string) {
+    return rirOverrides[rirKey(eId, sId)] ?? plannedRir ?? "";
+  }
+
   function getDisplayReps(set: WorkoutSet, index: number) {
     const historyReps = latestHistoryExercise?.sets[index]?.performedReps;
     if (!workoutStarted && completedSetsTotal === 0 && historyReps && historyReps > 0) {
@@ -1295,12 +1410,24 @@ export function WorkoutSessionScreen() {
     return normalizeReps(source);
   }
 
+  function getDisplayRir(set: WorkoutSet, index: number) {
+    const historyRir = latestHistoryExercise?.sets[index]?.performedRir;
+    const source = getSetRir(exercise?.id ?? "", set.id, set.rir);
+    const overrideValue = normalizeRir(
+      rirOverrides[rirKey(exercise?.id ?? "", set.id)],
+    );
+    if (overrideValue) return overrideValue;
+    if (historyRir !== undefined && historyRir !== null) return String(historyRir);
+    return normalizeRir(source);
+  }
+
   function openSetEditor(setIndex: number) {
     if (!exercise) return;
     const set = activeExerciseSets[setIndex];
     if (!set) return;
-    setRepsDraft("");
-    setWeightDraft("");
+    setRepsDraft(getDisplayReps(set, setIndex));
+    setWeightDraft(String(parseWeight(getDisplayWeight(set, setIndex)) || ""));
+    setRirDraft(getDisplayRir(set, setIndex));
     setSetEditor({ exerciseIndex: currentIndex, setIndex });
   }
 
@@ -1310,8 +1437,11 @@ export function WorkoutSessionScreen() {
     if (!setEditor) return;
     const nw = weightDraft ? formatWeight(weightDraft) : "";
     const nr = repsDraft.trim();
+    const rirDraftValue = rirDraft.trim();
+    const nextRir = normalizeRir(rirDraft);
     const nextWeightOverrides = { ...weightOverrides };
     const nextRepsOverrides = { ...repsOverrides };
+    const nextRirOverrides = { ...rirOverrides };
 
     sessionExercises.forEach((item, ii) => {
       if (scope === "single" && ii !== setEditor.exerciseIndex) return;
@@ -1330,17 +1460,24 @@ export function WorkoutSessionScreen() {
 
         if (nw) nextWeightOverrides[weightKey(item.id, set.id)] = nw;
         if (nr) nextRepsOverrides[repsKey(item.id, set.id)] = nr;
+        if (rirDraftValue === "") {
+          delete nextRirOverrides[rirKey(item.id, set.id)];
+        } else if (nextRir) {
+          nextRirOverrides[rirKey(item.id, set.id)] = nextRir;
+        }
       });
     });
 
     setWeightOverrides(nextWeightOverrides);
     setRepsOverrides(nextRepsOverrides);
+    setRirOverrides(nextRirOverrides);
 
     if (authSession?.token) {
       void saveSessionProgress(authSession.token, workoutId, currentSessionId, {
         completed_sets: completedByExercise,
         weight_overrides: nextWeightOverrides,
         reps_overrides: nextRepsOverrides,
+        rir_overrides: nextRirOverrides,
         elapsed_seconds: elapsed,
         rest_elapsed_seconds: restElapsedSeconds,
         rest_left_seconds: restLeft,
@@ -1380,6 +1517,7 @@ export function WorkoutSessionScreen() {
         completed_sets: completedByExercise,
         weight_overrides: weightOverrides,
         reps_overrides: repsOverrides,
+        rir_overrides: rirOverrides,
         elapsed_seconds: elapsed,
         rest_elapsed_seconds: restElapsedSeconds,
         rest_left_seconds: 0,
@@ -1416,6 +1554,7 @@ export function WorkoutSessionScreen() {
           completed_sets: completedByExercise,
           weight_overrides: weightOverrides,
           reps_overrides: repsOverrides,
+          rir_overrides: rirOverrides,
           elapsed_seconds: elapsed,
           rest_elapsed_seconds: restElapsedSeconds,
           rest_left_seconds: restLeft,
@@ -1612,7 +1751,7 @@ export function WorkoutSessionScreen() {
                   className="font-heading text-[22px] font-bold text-text-main"
                   style={{ letterSpacing: -0.35, lineHeight: 24 }}
                 >
-                  {exercise.name}
+                  {getTrimmedText(exercise.name) ?? "Exercício"}
                 </AppText>
                 <AppText className="mt-2 text-[13px] text-text-muted">
                   {exercise.muscle} · Descanso {currentSetRestSeconds}s
@@ -1630,7 +1769,7 @@ export function WorkoutSessionScreen() {
             <View className="mb-4 gap-2">
               <View className="pr-2">
                 <AppText className="text-sm leading-6 text-text-muted">
-                  {exerciseDescription ?? exercise.cue}
+                  {exerciseSummaryText}
                 </AppText>
               </View>
               <Pressable
@@ -1737,8 +1876,21 @@ export function WorkoutSessionScreen() {
                             Série {index + 1}
                           </AppText>
                           <AppText className="text-[12px] font-semibold text-text-main">
-                            {set.performedWeightLabel || set.plannedWeight || "Carga livre"}{" "}
-                            x {set.performedReps || normalizeReps(set.plannedReps)} reps
+                            {formatSetExecutionLabel({
+                              weight:
+                                set.performedWeightLabel ||
+                                set.plannedWeight ||
+                                "",
+                              reps: String(
+                                set.performedReps || normalizeReps(set.plannedReps),
+                              ),
+                              rir:
+                                set.performedRir !== undefined &&
+                                set.performedRir !== null
+                                  ? String(set.performedRir)
+                                  : set.plannedRir,
+                              fallbackDuration: "Carga livre",
+                            })}
                           </AppText>
                         </View>
                       ))}
@@ -1779,6 +1931,7 @@ export function WorkoutSessionScreen() {
                 const isNext = index === completedSets && !exerciseDone;
                 const curReps = getDisplayReps(set, index);
                 const curWeight = getDisplayWeight(set, index);
+                const curRir = getDisplayRir(set, index);
                 const editing =
                   setEditor?.exerciseIndex === currentIndex &&
                   setEditor.setIndex === index;
@@ -1787,7 +1940,7 @@ export function WorkoutSessionScreen() {
                   return (
                     <View
                       key={set.id}
-                      className="mb-1 flex-row items-center gap-2 rounded-xl border border-border-subtle bg-bg-surface px-3 py-3"
+                      className="mb-1 flex-row items-start gap-2 rounded-xl border border-border-subtle bg-bg-surface px-3 py-3"
                     >
                       <View className="mr-3 h-[22px] w-[22px] items-center justify-center rounded-full bg-bg-elevated">
                         <AppText className="text-[9px] font-bold text-text-muted">
@@ -1795,105 +1948,151 @@ export function WorkoutSessionScreen() {
                         </AppText>
                       </View>
 
-                      <View className="flex-1 flex-row items-center justify-end gap-4">
-                        <View className="flex-row items-center gap-1">
-                          <Pressable
-                            className="h-[28px] w-[28px] items-center justify-center rounded-[8px] border border-border-subtle bg-bg-elevated"
-                            onPress={() =>
-                              setWeightDraft((value) =>
-                                String(
-                                  Math.max(
-                                    0,
-                                    (parseFloat(value || "0") || 0) - 2.5,
+                      <View className="flex-1 gap-3">
+                        <View className="flex-row items-center justify-end gap-4">
+                          <View className="flex-row items-center gap-1">
+                            <Pressable
+                              className="h-[28px] w-[28px] items-center justify-center rounded-[8px] border border-border-subtle bg-bg-elevated"
+                              onPress={() =>
+                                setWeightDraft((value) =>
+                                  String(
+                                    Math.max(
+                                      0,
+                                      (parseFloat(value || "0") || 0) - 2.5,
+                                    ),
                                   ),
-                                ),
-                              )
-                            }
-                          >
-                            <Minus color="#9CA3AF" size={11} weight="bold" />
-                          </Pressable>
-                          <TextInput
-                            className="h-[34px] w-[58px] rounded-[8px] border border-brand-primary bg-bg-elevated px-2 text-center text-sm font-bold text-white"
-                            keyboardType="decimal-pad"
-                            onChangeText={setWeightDraft}
-                            placeholder={getDisplayWeight(set, index)}
-                            placeholderTextColor={isDark ? "#71717A" : "#A1A1AA"}
-                            style={{
-                              lineHeight: 16,
-                              paddingVertical: 0,
-                              textAlignVertical: "center",
-                            }}
-                            value={weightDraft}
-                          />
-                          <Pressable
-                            className="h-[28px] w-[28px] items-center justify-center rounded-[8px] border border-border-subtle bg-bg-elevated"
-                            onPress={() =>
-                              setWeightDraft((value) =>
-                                String((parseFloat(value || "0") || 0) + 2.5),
-                              )
-                            }
-                          >
-                            <Plus color="#9CA3AF" size={11} weight="bold" />
-                          </Pressable>
-                          <AppText className="text-[11px] text-text-muted">
-                            kg
-                          </AppText>
+                                )
+                              }
+                            >
+                              <Minus color="#9CA3AF" size={11} weight="bold" />
+                            </Pressable>
+                            <TextInput
+                              className="h-[34px] w-[58px] rounded-[8px] border border-brand-primary bg-bg-elevated px-2 text-center text-sm font-bold text-white"
+                              keyboardType="decimal-pad"
+                              onChangeText={setWeightDraft}
+                              placeholder={getDisplayWeight(set, index)}
+                              placeholderTextColor={isDark ? "#71717A" : "#A1A1AA"}
+                              style={{
+                                lineHeight: 16,
+                                paddingVertical: 0,
+                                textAlignVertical: "center",
+                              }}
+                              value={weightDraft}
+                            />
+                            <Pressable
+                              className="h-[28px] w-[28px] items-center justify-center rounded-[8px] border border-border-subtle bg-bg-elevated"
+                              onPress={() =>
+                                setWeightDraft((value) =>
+                                  String((parseFloat(value || "0") || 0) + 2.5),
+                                )
+                              }
+                            >
+                              <Plus color="#9CA3AF" size={11} weight="bold" />
+                            </Pressable>
+                            <AppText className="text-[11px] text-text-muted">
+                              kg
+                            </AppText>
+                          </View>
+
+                          <View className="flex-row items-center gap-1">
+                            <Pressable
+                              className="h-[28px] w-[28px] items-center justify-center rounded-[8px] border border-border-subtle bg-bg-elevated"
+                              onPress={() =>
+                                setRepsDraft((value) =>
+                                  String(
+                                    Math.max(
+                                      1,
+                                      (parseInt(value || "1", 10) || 1) - 1,
+                                    ),
+                                  ),
+                                )
+                              }
+                            >
+                              <Minus color="#9CA3AF" size={11} weight="bold" />
+                            </Pressable>
+                            <TextInput
+                              className="h-[34px] w-[40px] rounded-[8px] border border-brand-primary bg-bg-elevated px-2 text-center text-sm font-bold text-white"
+                              keyboardType="number-pad"
+                              onChangeText={setRepsDraft}
+                              placeholder={getDisplayReps(set, index)}
+                              placeholderTextColor={isDark ? "#71717A" : "#A1A1AA"}
+                              style={{
+                                lineHeight: 16,
+                                paddingVertical: 0,
+                                textAlignVertical: "center",
+                              }}
+                              value={repsDraft}
+                            />
+                            <Pressable
+                              className="h-[28px] w-[28px] items-center justify-center rounded-[8px] border border-border-subtle bg-bg-elevated"
+                              onPress={() =>
+                                setRepsDraft((value) =>
+                                  String((parseInt(value || "0", 10) || 0) + 1),
+                                )
+                              }
+                            >
+                              <Plus color="#9CA3AF" size={11} weight="bold" />
+                            </Pressable>
+                            <AppText className="text-[11px] text-text-muted">
+                              reps
+                            </AppText>
+                          </View>
                         </View>
 
-                        <View className="flex-row items-center gap-1">
-                          <Pressable
-                            className="h-[28px] w-[28px] items-center justify-center rounded-[8px] border border-border-subtle bg-bg-elevated"
-                            onPress={() =>
-                              setRepsDraft((value) =>
-                                String(
-                                  Math.max(
-                                    1,
-                                    (parseInt(value || "1", 10) || 1) - 1,
+                        <View className="flex-row items-center justify-end gap-3">
+                          <View className="flex-row items-center gap-1">
+                            <Pressable
+                              className="h-[28px] w-[28px] items-center justify-center rounded-[8px] border border-border-subtle bg-bg-elevated"
+                              onPress={() =>
+                                setRirDraft((value) =>
+                                  String(
+                                    Math.max(
+                                      0,
+                                      (parseInt(value || "0", 10) || 0) - 1,
+                                    ),
                                   ),
-                                ),
-                              )
-                            }
-                          >
-                            <Minus color="#9CA3AF" size={11} weight="bold" />
-                          </Pressable>
-                          <TextInput
-                            className="h-[34px] w-[40px] rounded-[8px] border border-brand-primary bg-bg-elevated px-2 text-center text-sm font-bold text-white"
-                            keyboardType="number-pad"
-                            onChangeText={setRepsDraft}
-                            placeholder={
-                              getDisplayReps(set, index)
-                            }
-                            placeholderTextColor={isDark ? "#71717A" : "#A1A1AA"}
-                            style={{
-                              lineHeight: 16,
-                              paddingVertical: 0,
-                              textAlignVertical: "center",
-                            }}
-                            value={repsDraft}
-                          />
-                          <Pressable
-                            className="h-[28px] w-[28px] items-center justify-center rounded-[8px] border border-border-subtle bg-bg-elevated"
-                            onPress={() =>
-                              setRepsDraft((value) =>
-                                String((parseInt(value || "0", 10) || 0) + 1),
-                              )
-                            }
-                          >
-                            <Plus color="#9CA3AF" size={11} weight="bold" />
-                          </Pressable>
-                          <AppText className="text-[11px] text-text-muted">
-                            reps
-                          </AppText>
-                        </View>
+                                )
+                              }
+                            >
+                              <Minus color="#9CA3AF" size={11} weight="bold" />
+                            </Pressable>
+                            <TextInput
+                              className="h-[34px] w-[40px] rounded-[8px] border border-brand-primary bg-bg-elevated px-2 text-center text-sm font-bold text-white"
+                              keyboardType="number-pad"
+                              onChangeText={setRirDraft}
+                              placeholder={getDisplayRir(set, index)}
+                              placeholderTextColor={isDark ? "#71717A" : "#A1A1AA"}
+                              style={{
+                                lineHeight: 16,
+                                paddingVertical: 0,
+                                textAlignVertical: "center",
+                              }}
+                              value={rirDraft}
+                            />
+                            <Pressable
+                              className="h-[28px] w-[28px] items-center justify-center rounded-[8px] border border-border-subtle bg-bg-elevated"
+                              onPress={() =>
+                                setRirDraft((value) =>
+                                  String((parseInt(value || "0", 10) || 0) + 1),
+                                )
+                              }
+                            >
+                              <Plus color="#9CA3AF" size={11} weight="bold" />
+                            </Pressable>
+                            <AppText className="text-[11px] text-text-muted">
+                              RIR
+                            </AppText>
+                          </View>
 
-                        <Pressable
-                          className="min-w-[44px] rounded-[8px] bg-brand-primary px-3 py-2"
-                          onPress={() => applySetExecution("single")}
-                        >
-                          <AppText className="text-[11px] font-bold text-white">
-                            OK
-                          </AppText>
-                        </Pressable>
+                          <Pressable
+                            className="min-w-[44px] rounded-[8px] bg-brand-primary px-3 py-2"
+                            onPress={() => applySetExecution("single")}
+                          >
+                            <AppText className="text-[11px] font-bold text-white">
+                              OK
+                            </AppText>
+                          </Pressable>
+                        </View>
                       </View>
                     </View>
                   );
@@ -1972,9 +2171,12 @@ export function WorkoutSessionScreen() {
                           done ? "text-text-muted" : "text-text-main",
                         )}
                       >
-                        {curWeight
-                          ? `${curWeight} x ${curReps}`
-                          : (set.duration ?? `${curReps} reps`)}
+                        {formatSetExecutionLabel({
+                          weight: curWeight,
+                          reps: curReps,
+                          rir: curRir,
+                          fallbackDuration: set.duration,
+                        })}
                       </AppText>
                       {!done ? (
                         <Pressable
@@ -2078,6 +2280,8 @@ export function WorkoutSessionScreen() {
           ...exercise,
           description: exerciseDescription,
           executionTips: exerciseExecutionTips,
+          commonExecutionErrors: exerciseCommonExecutionErrors,
+          observationsAndTips: exerciseObservationsAndTips,
         }}
         helpVideos={helpVideos}
         image={sessionImage}

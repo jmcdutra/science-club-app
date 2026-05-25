@@ -2,7 +2,7 @@ import { CheckCircle, Clock, Fire, Footprints, Pause, Play, TrendUp, X } from 'p
 import * as Location from 'expo-location';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, View } from 'react-native';
+import { Alert, Modal, Pressable, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
@@ -11,18 +11,8 @@ import { CardioIcon } from '../components/CardioIcon';
 import { useCardioStore } from '../stores/cardio.store';
 import { CARDIO_TYPES, type CardioTypeConfig, type Coordinate } from '../types';
 
-// ─── GPS simulation fallback (Parque do Ibirapuera, São Paulo) ───────────────
 const BASE_LAT = -23.5875;
 const BASE_LNG = -46.6545;
-
-function simulateCoord(elapsed: number): Coordinate {
-  const angle = ((elapsed % 720) / 720) * (2 * Math.PI);
-  return {
-    lat: BASE_LAT + Math.sin(angle) * 0.0025,
-    lng: BASE_LNG + Math.cos(angle) * 0.004,
-    timestamp: new Date().toISOString(),
-  };
-}
 
 function haversineKm(a: Coordinate, b: Coordinate): number {
   const R = 6371;
@@ -53,6 +43,14 @@ function fmtTime(s: number) {
 const STEP_LENGTH_METERS = 0.78;
 const MIN_MOVEMENT_DISTANCE_KM = 0.004;
 const MAX_JUMP_DISTANCE_KM = 0.35;
+
+function toSafeMetric(value: number, fallback = 0) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return value < 0 ? fallback : value;
+}
 
 // ─── Leaflet map (CartoDB Dark Matter) ──────────────────────────────────────
 function buildMapHtml(color: string, centerLat: number, centerLng: number) {
@@ -135,10 +133,10 @@ export function RunActiveScreen() {
   const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const webViewRef   = useRef<WebView>(null);
   const runningRef   = useRef(true);
-  const usingSimRef  = useRef(false); // true when GPS permission denied
   const lastTrackedCoordRef = useRef<Coordinate | null>(null);
   const ignoreNextCoordRef = useRef(false);
   const latestPreviewCoordRef = useRef<Coordinate | null>(null);
+  const locationAlertShownRef = useRef(false);
 
   // keep runningRef in sync so GPS callback can check it
   useEffect(() => { runningRef.current = running; }, [running]);
@@ -201,24 +199,51 @@ export function RunActiveScreen() {
     pushCoordToMap(coord);
   }, [pushCoordToMap]);
 
+  const handleLocationSetupError = useCallback((message: string) => {
+    if (locationAlertShownRef.current) {
+      return;
+    }
+
+    locationAlertShownRef.current = true;
+    runningRef.current = false;
+    setRunning(false);
+
+    Alert.alert('Localização indisponível', message, [
+      {
+        text: 'Voltar',
+        onPress: () => router.replace('/(app)/(tabs)/run' as any),
+      },
+    ]);
+  }, []);
+
   // ── Real GPS setup ─────────────────────────────────────────────────────────
   useEffect(() => {
     let sub: Location.LocationSubscription | null = null;
+    let cancelled = false;
 
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-
-      if (status !== 'granted') {
-        usingSimRef.current = true;
-        return;
-      }
-
       try {
+        const servicesEnabled = await Location.hasServicesEnabledAsync();
+        if (!servicesEnabled) {
+          handleLocationSetupError('Ative a localização do aparelho para registrar o cardio.');
+          return;
+        }
+
+        let permission = await Location.getForegroundPermissionsAsync();
+        if (permission.status !== 'granted') {
+          permission = await Location.requestForegroundPermissionsAsync();
+        }
+
+        if (permission.status !== 'granted') {
+          handleLocationSetupError('Autorize a localização para iniciar e salvar o cardio corretamente.');
+          return;
+        }
+
         const lastKnown = await Location.getLastKnownPositionAsync({
           maxAge: 1000 * 60 * 5,
           requiredAccuracy: 250,
         });
-        if (lastKnown && !mapCenterSetRef.current) {
+        if (!cancelled && lastKnown && !mapCenterSetRef.current) {
           mapCenterSetRef.current = true;
           setMapCenter({ lat: lastKnown.coords.latitude, lng: lastKnown.coords.longitude });
           pushCoordToMap({
@@ -228,72 +253,63 @@ export function RunActiveScreen() {
           });
         }
       } catch {
-        // ignore and wait for live coordinates
+        // Ignore stale cached position and keep waiting for a fresh fix.
       }
 
-      sub = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.Balanced,
-          distanceInterval: 3,
-          timeInterval: 1000,
-        },
-        (position) => {
-          if (!runningRef.current) return;
+      try {
+        sub = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Balanced,
+            distanceInterval: 3,
+            timeInterval: 1000,
+          },
+          (position) => {
+            if (!runningRef.current || cancelled) return;
 
-          const coord: Coordinate = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-            timestamp: new Date(position.timestamp).toISOString(),
-          };
-          registerTrackedCoord(coord);
-        },
-      );
+            const coord: Coordinate = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              timestamp: new Date(position.timestamp).toISOString(),
+            };
+            registerTrackedCoord(coord);
+          },
+        );
+      } catch {
+        handleLocationSetupError('Não foi possível iniciar o rastreamento de localização neste dispositivo.');
+        return;
+      }
 
       try {
         const initial = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
           maximumAge: 15000,
         });
-        registerTrackedCoord({
-          lat: initial.coords.latitude,
-          lng: initial.coords.longitude,
-          timestamp: new Date(initial.timestamp).toISOString(),
-        });
+
+        if (!cancelled) {
+          registerTrackedCoord({
+            lat: initial.coords.latitude,
+            lng: initial.coords.longitude,
+            timestamp: new Date(initial.timestamp).toISOString(),
+          });
+        }
       } catch {
-        // if the first live fix delays, we still show the last known center immediately
+        // Some devices take longer for the first fix; keep the watcher alive.
       }
-    })();
+    })().catch(() => {
+      handleLocationSetupError('Não foi possível preparar a localização para esse treino.');
+    });
 
-    return () => { sub?.remove(); };
-  }, [pushCoordToMap, registerTrackedCoord]);
+    return () => {
+      cancelled = true;
+      sub?.remove();
+    };
+  }, [handleLocationSetupError, pushCoordToMap, registerTrackedCoord]);
 
-  // ── Timer tick (drives elapsed + display metrics + simulation fallback) ────
+  // ── Timer tick (drives elapsed + display metrics) ──────────────────────────
   const tick = useCallback(() => {
     if (runningRef.current) {
       const next = (elapsedRef.current += 1);
       setElapsed(next);
-
-      // simulation fallback when GPS permission denied
-      if (usingSimRef.current) {
-        const coord = simulateCoord(next);
-        const previousTracked = lastTrackedCoordRef.current;
-        if (previousTracked) {
-          const delta = haversineKm(previousTracked, coord);
-          if (delta >= MIN_MOVEMENT_DISTANCE_KM && delta <= MAX_JUMP_DISTANCE_KM) {
-            distRef.current += delta;
-            coordsRef.current = [...coordsRef.current, coord];
-            if (next % 2 === 0) {
-              pushCoordToMap(coord);
-            }
-          }
-        } else {
-          coordsRef.current = [...coordsRef.current, coord];
-          if (next % 2 === 0) {
-            pushCoordToMap(coord);
-          }
-        }
-        lastTrackedCoordRef.current = coord;
-      }
 
       calsRef.current = Math.round(distRef.current * 63);
 
@@ -308,7 +324,7 @@ export function RunActiveScreen() {
     const nextPaused = pausedSecondsRef.current + 1;
     pausedSecondsRef.current = nextPaused;
     setPausedSeconds(nextPaused);
-  }, [pushCoordToMap, type.id]);
+  }, [type.id]);
 
   useEffect(() => {
     timerRef.current = setInterval(tick, 1000);
@@ -332,26 +348,37 @@ export function RunActiveScreen() {
     if (timerRef.current) clearInterval(timerRef.current);
     setRunning(false);
     runningRef.current = false;
-    const el = elapsedRef.current;
+    const elapsedSeconds = Math.round(toSafeMetric(elapsedRef.current));
+    const distanceKm = toSafeMetric(distRef.current);
+    const calories = Math.round(toSafeMetric(calsRef.current));
+    const avgSpeedKmh =
+      elapsedSeconds > 0 && distanceKm > 0
+        ? Math.round((distanceKm / elapsedSeconds) * 3600 * 10) / 10
+        : 0;
+    const steps =
+      type.id === 'bike'
+        ? 0
+        : Math.max(0, Math.round((distanceKm * 1000) / STEP_LENGTH_METERS));
+
     setCompletedSession({
       type,
       coords: coordsRef.current.filter((_, i) => i % 2 === 0),
-      elapsed: el,
+      elapsed: elapsedSeconds,
       pausedSeconds: pausedSecondsRef.current,
-      distanceKm: distRef.current,
-      calories: calsRef.current,
-      avgPace: calcPace(distRef.current, el),
-      avgSpeedKmh: Math.round((distRef.current / el) * 3600 * 10) / 10,
+      distanceKm,
+      calories,
+      avgPace: calcPace(distanceKm, elapsedSeconds),
+      avgSpeedKmh,
       avgHr: 0,
       maxHr: 0,
-      steps: displaySteps,
+      steps,
       startedAt: startedAtRef.current,
       finishedAt: new Date().toISOString(),
       effort: null,
       notes: '',
     });
     router.replace('/(app)/run/summary' as any);
-  }, [displaySteps, type, setCompletedSession]);
+  }, [setCompletedSession, type]);
 
   const primaryMetric = displayKm.toFixed(2);
 

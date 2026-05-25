@@ -11,27 +11,13 @@ import { WebView } from 'react-native-webview';
 import { AppCard } from '@/src/shared/components/ui/AppCard';
 import { AppButton } from '@/src/shared/components/ui/AppButton';
 import { AppText } from '@/src/shared/components/ui/AppText';
+import { getNativeShareModule } from '@/src/shared/utils/nativeShare';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
 
 import { deleteCardioActivity, saveCardioActivity, updateCardioActivity } from '../api/cardio';
 import { CardioIcon } from '../components/CardioIcon';
 import { useCardioStore } from '../stores/cardio.store';
 import type { CardioEffort } from '../types';
-
-type NativeShareModule = {
-  Social?: { INSTAGRAM_STORIES?: string };
-  shareSingle: (options: Record<string, unknown>) => Promise<unknown>;
-};
-
-function getNativeShareModule() {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const shareModule = require('react-native-share') as { default?: NativeShareModule } & NativeShareModule;
-    return shareModule.default ?? shareModule;
-  } catch {
-    return null;
-  }
-}
 
 function fmtTime(s: number) {
   const h = Math.floor(s / 3600);

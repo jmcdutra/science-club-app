@@ -1,6 +1,10 @@
 import { apiClient } from '@/src/shared/api/apiClient';
 import type { CardioActivityDTO, CardioSummaryDTO, ActiveCardioSession } from '../types';
 
+function toFiniteNumber(value: number, fallback = 0) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
 export async function getCardioActivities(token: string, params?: { limit?: number; skip?: number; type?: string }) {
   const q = new URLSearchParams();
   if (params?.limit) q.set('limit', String(params.limit));
@@ -18,6 +22,10 @@ export async function getCardioSummary(token: string) {
 }
 
 export async function saveCardioActivity(token: string, session: ActiveCardioSession) {
+  const routeCoordinates = session.coords
+    .filter((coord) => Number.isFinite(coord.lat) && Number.isFinite(coord.lng))
+    .filter((_, i) => i % 3 === 0);
+
   return apiClient<CardioActivityDTO>('/api/cardio', {
     method: 'POST',
     token,
@@ -25,18 +33,18 @@ export async function saveCardioActivity(token: string, session: ActiveCardioSes
       type: session.type.id,
       started_at: session.startedAt,
       finished_at: session.finishedAt,
-      elapsed_seconds: session.elapsed,
-      paused_seconds: session.pausedSeconds,
-      distance_km: session.distanceKm,
-      calories: session.calories,
+      elapsed_seconds: Math.max(0, Math.round(toFiniteNumber(session.elapsed))),
+      paused_seconds: Math.max(0, Math.round(toFiniteNumber(session.pausedSeconds))),
+      distance_km: Math.max(0, toFiniteNumber(session.distanceKm)),
+      calories: Math.max(0, Math.round(toFiniteNumber(session.calories))),
       avg_pace: session.avgPace,
-      avg_speed_kmh: session.avgSpeedKmh,
-      avg_hr: session.avgHr,
-      max_hr: session.maxHr,
-      steps: session.steps,
+      avg_speed_kmh: Math.max(0, toFiniteNumber(session.avgSpeedKmh)),
+      avg_hr: Math.max(0, Math.round(toFiniteNumber(session.avgHr))),
+      max_hr: Math.max(0, Math.round(toFiniteNumber(session.maxHr))),
+      steps: Math.max(0, Math.round(toFiniteNumber(session.steps))),
       effort: session.effort,
       notes: session.notes,
-      route_coordinates: session.coords.filter((_, i) => i % 3 === 0),
+      route_coordinates: routeCoordinates,
     }),
   });
 }

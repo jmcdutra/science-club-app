@@ -6,6 +6,7 @@ export type WorkoutSetDTO = {
   type?: string;
   reps: string;
   weight?: string;
+  rir?: string;
   restSeconds?: number;
   duration?: string;
 };
@@ -18,6 +19,8 @@ export type WorkoutExerciseDTO = {
   cue: string;
   description?: string;
   executionTips?: string[];
+  commonExecutionErrors?: string;
+  observationsAndTips?: string;
   coverUrl?: string | null;
   videos?: {
     id: string;
@@ -44,9 +47,11 @@ export type WorkoutHistorySetDTO = {
   label: string;
   plannedWeight: string;
   plannedReps: string;
+  plannedRir?: string;
   performedWeightKg: number;
   performedWeightLabel: string;
   performedReps: number;
+  performedRir?: number;
   volumeKg: number;
   completed: boolean;
 };
@@ -96,6 +101,7 @@ export type WorkoutProgressDTO = {
   completed_sets: Record<string, number>;
   weight_overrides: Record<string, string>;
   reps_overrides: Record<string, string>;
+  rir_overrides: Record<string, string>;
   rest_overrides: Record<string, string>;
   elapsed_seconds: number;
   rest_elapsed_seconds: number;

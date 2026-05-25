@@ -4,6 +4,7 @@ export type WorkoutSet = {
   type?: string;
   reps: string;
   weight?: string;
+  rir?: string;
   restSeconds?: number;
   duration?: string;
 };
@@ -25,6 +26,8 @@ export type WorkoutExercise = {
   cue: string;
   description?: string;
   executionTips?: string[];
+  commonExecutionErrors?: string;
+  observationsAndTips?: string;
   videos?: WorkoutExerciseVideo[];
   coverUrl?: string | null;
   previous: string;

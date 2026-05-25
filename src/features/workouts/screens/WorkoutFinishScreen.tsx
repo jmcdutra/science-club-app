@@ -27,6 +27,7 @@ import { AppCard } from "@/src/shared/components/ui/AppCard";
 import { AppLottie } from "@/src/shared/components/ui/AppLottie";
 import { AppScreen } from "@/src/shared/components/ui/AppScreen";
 import { AppText } from "@/src/shared/components/ui/AppText";
+import { getNativeShareModule } from "@/src/shared/utils/nativeShare";
 import { useAppTheme } from "@/src/shared/theme/appTheme";
 import { useAuthStore } from "@/src/features/auth/services/auth.store";
 
@@ -66,24 +67,6 @@ function formatKg(value: number) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   }).format(value);
-}
-
-type NativeShareModule = {
-  Social?: { INSTAGRAM_STORIES?: string };
-  open: (options: Record<string, unknown>) => Promise<unknown>;
-  shareSingle: (options: Record<string, unknown>) => Promise<unknown>;
-};
-
-function getNativeShareModule() {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const shareModule = require("react-native-share") as {
-      default?: NativeShareModule;
-    } & NativeShareModule;
-    return shareModule.default ?? shareModule;
-  } catch {
-    return null;
-  }
 }
 
 function StatTile({
@@ -155,7 +138,7 @@ export function WorkoutFinishScreen() {
     ? remoteWorkout.sessions.find((candidate) => candidate.id === sessionId) ||
       remoteWorkout.sessions[0]
     : getWorkoutSession(id, sessionId);
-  const resolvedSessionId = sessionId || session.id;
+  const resolvedSessionId = session?.id || sessionId || "";
   const { data: currentProgress } = useQuery({
     queryKey: ["student-workout-progress", id, resolvedSessionId],
     queryFn: () =>
@@ -478,7 +461,7 @@ export function WorkoutFinishScreen() {
 
   async function shareInstagramStories() {
     const nativeShare = getNativeShareModule();
-    if (!nativeShare) {
+    if (!nativeShare?.shareSingle || !nativeShare?.Social?.INSTAGRAM_STORIES) {
       Alert.alert(
         "Build nativa necessária",
         "Compartilhamento direto no Instagram requer build nativa.",
