@@ -90,12 +90,16 @@ export type DietAdherenceDay = {
   waterMl: number;
   consumedCalories: number;
   consumedProtein: number;
+  consumedCarbs: number;
+  consumedFat: number;
   hitWaterGoal: boolean;
   hitCaloriesGoal: boolean;
   hitProteinGoal: boolean;
   mealsOnTime: number;
   totalMealsLogged: number;
+  totalMealsPlanned: number;
   adherencePercent: number;
+  dayLog?: DietDayLog;
 };
 
 export type DietAdherenceResponse = {
@@ -111,6 +115,11 @@ export type DietAdherenceResponse = {
     daysHitProteinGoal: number;
     mealsOnTime: number;
     totalMealsLogged: number;
+    totalMealsPlanned: number;
+    consumedCalories: number;
+    consumedProtein: number;
+    consumedCarbs: number;
+    consumedFat: number;
     averageAdherence: number;
   } | null;
   days: DietAdherenceDay[];

@@ -23,7 +23,7 @@ import { useAuthStore } from '@/src/features/auth/services/auth.store';
 import { useRefetchOnFocus } from '@/src/shared/hooks/useRefetchOnFocus';
 
 import { createAssessmentDraft, useAssessmentsStore } from '../services/assessments.store';
-import { getEvaluationById } from '../api/assessments';
+import { getEvaluationById, getStudentEvaluations } from '../api/assessments';
 import {
   getExamProgress,
   getPhotoProgress,
@@ -115,6 +115,11 @@ export function AssessmentDetailScreen() {
   const router = useRouter();
   const { assessmentId } = useLocalSearchParams<{ assessmentId: string }>();
   const { session } = useAuthStore();
+  const { data: allAssessments = [] } = useQuery({
+    queryKey: ['assessments', 'history', assessmentId],
+    queryFn: () => getStudentEvaluations(session?.token!),
+    enabled: !!session?.token && !!assessmentId,
+  });
   const { data: assessment, isLoading, error, refetch } = useQuery({
     queryKey: ['assessment', assessmentId],
     queryFn: () => getEvaluationById(session?.token!, assessmentId!),
@@ -185,6 +190,10 @@ export function AssessmentDetailScreen() {
 
   const description = cleanText(assessment.questionnaire.description || assessment.category);
   const responsibleNames = getResponsibleProfessionals(assessment);
+  const previousAssessments = allAssessments
+    .filter((item) => String(item.id) !== String(assessment.id))
+    .filter((item) => item.status === 'done' || item.status === 'answered' || item.status === 'analysis')
+    .slice(0, 3);
 
   const meta = [
     responsibleNames.length > 0
@@ -446,6 +455,70 @@ export function AssessmentDetailScreen() {
           </AppButton>
         )}
       </Animated.View>
+
+      {previousAssessments.length ? (
+        <Animated.View entering={FadeInDown.delay(200).duration(420)} style={{ marginTop: 28 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              borderBottomWidth: 1,
+              borderBottomColor: '#1A1A1A',
+              paddingBottom: 10,
+              marginBottom: 12,
+            }}
+          >
+            <AppText
+              style={{
+                fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
+                letterSpacing: 3.5, color: '#555555',
+              }}
+            >
+              Histórico anterior
+            </AppText>
+          </View>
+
+          <View style={{ gap: 8 }}>
+            {previousAssessments.map((item: any) => (
+              <Pressable
+                key={item.id}
+                onPress={() => router.push(`/(app)/assessments/${item.id}` as Href)}
+                style={{
+                  borderRadius: 16,
+                  backgroundColor: '#111111',
+                  borderWidth: 1,
+                  borderColor: '#222222',
+                  padding: 14,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <AppText style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>
+                      {item.title}
+                    </AppText>
+                    <AppText style={{ fontSize: 11, color: '#666666', marginTop: 4 }}>
+                      {formatAssessmentDate(item.due_date)} · {item.category}
+                    </AppText>
+                  </View>
+                  <CaretRight size={14} color="#444444" weight="bold" />
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+                  <AppText style={{ fontSize: 11, color: '#B8B8BE' }}>
+                    {(item.answers || []).length} resposta(s)
+                  </AppText>
+                  <AppText style={{ fontSize: 11, color: '#B8B8BE' }}>
+                    {(item.photos || []).length} foto(s)
+                  </AppText>
+                  <AppText style={{ fontSize: 11, color: '#B8B8BE' }}>
+                    {(item.exams || []).length} anexo(s)
+                  </AppText>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        </Animated.View>
+      ) : null}
     </AppScreen>
   );
 }
