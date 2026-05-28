@@ -3,7 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "expo start",
+    "start": "expo start --go",
     "start:tunnel": "node ./scripts/patch-expo-ngrok.js && expo start --host tunnel --clear",
     "start:iphone": "node ./scripts/start-iphone-tunnel.js",
     "start:lan": "node ./scripts/start-lan.js",
