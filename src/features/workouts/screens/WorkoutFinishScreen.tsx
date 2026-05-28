@@ -1003,7 +1003,7 @@ export function WorkoutFinishScreen() {
               backgroundColor:
                 saveWorkoutMutation.isPending || !submitted
                   ? "#1A1A1A"
-                  : "#8B5CF6",
+                  : "#7C3AED",
               borderWidth: 1,
               borderColor:
                 saveWorkoutMutation.isPending || !submitted
@@ -1014,7 +1014,7 @@ export function WorkoutFinishScreen() {
               shadowColor:
                 saveWorkoutMutation.isPending || !submitted
                   ? "transparent"
-                  : "rgba(139,92,246,0.30)",
+                  : "rgba(124,58,237,0.30)",
               shadowOpacity: saveWorkoutMutation.isPending || !submitted ? 0 : 1,
               shadowRadius: saveWorkoutMutation.isPending || !submitted ? 0 : 18,
               shadowOffset: { width: 0, height: 12 },
@@ -1035,11 +1035,11 @@ export function WorkoutFinishScreen() {
             />
             <CheckCircle size={18} color="#FFFFFF" weight="fill" />
             <AppText className="text-center text-[15px] font-semibold text-white">
-              {!submitted
-                ? "Finalizando treino..."
-                : hasUnsavedPostFinishChanges
-                  ? "Enviar considerações"
-                  : "Voltar aos treinos"}
+            {!submitted
+              ? "Finalizando treino..."
+              : hasUnsavedPostFinishChanges
+                ? "Enviar considerações"
+                : "Voltar aos treinos"}
             </AppText>
           </Pressable>
         </View>

@@ -419,7 +419,7 @@ export function AssessmentDetailScreen() {
               disponíveis.
             </AppText>
             <AppText style={{ fontSize: 12, fontWeight: '700', color: '#FBBF24' }}>
-              Libera: {assessment.due_date}
+              Libera: {formatAssessmentDateTime(assessment.release_at || assessment.due_date)}
             </AppText>
           </View>
         ) : readOnly ? (

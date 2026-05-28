@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   Pressable,
   RefreshControl,
   ScrollView,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -44,11 +44,10 @@ import { colors } from '@/src/shared/theme/tokens';
 import {
   createRankingBoard,
   getRankingsOverview,
-  searchRankingStudents,
+  joinRankingByCode,
   type CreateRankingPayload,
   type RankingBoardDTO,
   type RankingMetric,
-  type RankingStudentDTO,
 } from '../api/rankings';
 
 const LEVELS = [
@@ -515,15 +514,9 @@ function CreateRankingModal({
   const [period, setPeriod] = useState<CreateRankingPayload['period']>('current_month');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<RankingStudentDTO[]>([]);
+  const [createdInviteCode, setCreatedInviteCode] = useState<string | null>(null);
 
   const selectedMetricOptions = selectedMetrics.map((item) => getMetricOption(item));
-  const studentsQuery = useQuery({
-    queryKey: ['ranking-students', search],
-    queryFn: () => searchRankingStudents(token, search),
-    enabled: visible,
-  });
 
   const createMutation = useMutation({
     mutationFn: () => createRankingBoard(token, {
@@ -533,29 +526,20 @@ function CreateRankingModal({
       period,
       startDate: period === 'custom' ? startDate : undefined,
       endDate: period === 'custom' ? endDate : undefined,
-      participantIds: selected.map((item) => item.id),
+      participantIds: [],
       visibility: 'private',
       description: selectedMetricOptions.length > 1
         ? `Ranking personalizado com ${selectedMetricOptions.length} métricas combinadas.`
         : selectedMetricOptions[0]?.description,
     }),
-    onSuccess: async () => {
+    onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: ['rankings-overview'] });
       setTitle('');
       setSelectedMetrics(['workouts_completed']);
-      setSelected([]);
       setStep(1);
-      onClose();
+      setCreatedInviteCode(response?.inviteCode || null);
     },
   });
-
-  const toggleStudent = (student: RankingStudentDTO) => {
-    setSelected((current) => (
-      current.some((item) => item.id === student.id)
-        ? current.filter((item) => item.id !== student.id)
-        : [...current, student]
-    ));
-  };
 
   const toggleMetric = (metric: RankingMetric) => {
     setSelectedMetrics((current) => (
@@ -566,7 +550,7 @@ function CreateRankingModal({
   };
 
   const handlePrimary = () => {
-    if (step < 3) {
+    if (step < 2) {
       setStep((current) => current + 1);
       return;
     }
@@ -578,7 +562,7 @@ function CreateRankingModal({
       <SafeAreaView className="flex-1 bg-bg-base" edges={['top', 'bottom']}>
         <View className="flex-row items-center justify-between border-b border-border-subtle px-6 py-4">
           <View>
-            <AppText className="text-[12px] text-text-muted">Etapa {step} de 3</AppText>
+            <AppText className="text-[12px] text-text-muted">Etapa {step} de 2</AppText>
             <AppText className="text-[20px] font-heading font-semibold text-text-main">
               Criar ranking
             </AppText>
@@ -590,13 +574,13 @@ function CreateRankingModal({
 
         <FlatList
           keyboardShouldPersistTaps="handled"
-          data={step === 3 ? (studentsQuery.data ?? []) : []}
-          keyExtractor={(item) => item.id}
+          data={[]}
+          keyExtractor={(_, index) => String(index)}
           contentContainerClassName="gap-4 px-6 pb-10 pt-5"
           ListHeaderComponent={(
             <View className="gap-5">
               <View className="flex-row gap-1">
-                {[1, 2, 3].map((item) => (
+                {[1, 2].map((item) => (
                   <View
                     key={item}
                     className="h-1 flex-1 rounded-full"
@@ -676,51 +660,20 @@ function CreateRankingModal({
                 </View>
               ) : null}
 
-              {step === 3 ? (
-                <View className="gap-2">
-                  <AppText className="ml-1 text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
-                    Participantes
-                  </AppText>
-                  <TextInput
-                    value={search}
-                    onChangeText={setSearch}
-                    placeholder="Buscar aluno pelo nome"
-                    placeholderTextColor={colors.text.muted}
-                    className="h-14 rounded-2xl border border-border-subtle bg-bg-surface px-4 text-text-main"
-                  />
-                  <View className="rounded-2xl border border-brand-primary/25 bg-brand-primary/10 p-4">
-                    <AppText className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
-                      Resumo
-                    </AppText>
-                    <AppText className="mt-2 text-[14px] font-bold text-text-main">
-                      {title || 'Ranking sem nome'}
-                    </AppText>
-                    <AppText className="mt-1 text-[12px] text-text-muted">
-                      {selectedMetricOptions.map((item) => item.label).join(' + ') || 'Escolha métricas'} · você + {selected.length} participantes
-                    </AppText>
-                  </View>
-                </View>
-              ) : null}
+              <View className="rounded-2xl border border-brand-primary/25 bg-brand-primary/10 p-4">
+                <AppText className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
+                  Resumo
+                </AppText>
+                <AppText className="mt-2 text-[14px] font-bold text-text-main">
+                  {title || 'Ranking sem nome'}
+                </AppText>
+                <AppText className="mt-1 text-[12px] text-text-muted">
+                  {selectedMetricOptions.map((item) => item.label).join(' + ') || 'Escolha métricas'} · código de convite para entrar
+                </AppText>
+              </View>
             </View>
           )}
-          renderItem={({ item }) => {
-            const active = selected.some((student) => student.id === item.id);
-            return (
-              <Pressable
-                onPress={() => toggleStudent(item)}
-                className="flex-row items-center justify-between rounded-2xl border px-4 py-4"
-                style={{
-                  borderColor: active ? colors.brand.primary : colors.border.subtle,
-                  backgroundColor: active ? 'rgba(139,92,246,0.14)' : colors.bg.surface,
-                }}
-              >
-                <AppText className="text-[14px] font-semibold text-text-main">{item.name}</AppText>
-                <AppText className={active ? 'text-[12px] font-bold text-brand-secondary' : 'text-[12px] text-text-muted'}>
-                  {active ? 'Selecionado' : 'Adicionar'}
-                </AppText>
-              </Pressable>
-            );
-          }}
+          renderItem={() => null}
           ListFooterComponent={(
             <View className="mt-2 flex-row gap-2">
               {step > 1 ? (
@@ -750,9 +703,9 @@ function CreateRankingModal({
                   ) : (
                     <>
                       <AppText className="text-[15px] font-bold text-white">
-                        {step === 3 ? 'Criar ranking' : 'Próximo'}
+                        {step === 2 ? 'Criar ranking' : 'Próximo'}
                       </AppText>
-                      {step === 3 ? (
+                      {step === 2 ? (
                         <Trophy size={18} color="#FFFFFF" weight="bold" />
                       ) : (
                         <CaretRight size={18} color="#FFFFFF" weight="bold" />
@@ -769,6 +722,42 @@ function CreateRankingModal({
             </View>
           )}
         />
+
+        <Modal
+          visible={Boolean(createdInviteCode)}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setCreatedInviteCode(null);
+            onClose();
+          }}
+        >
+          <View className="flex-1 items-center justify-center bg-black/60 px-6">
+            <View className="w-full max-w-[360px] rounded-3xl border border-border-subtle bg-bg-surface p-6">
+              <AppText className="text-center text-[19px] font-heading font-semibold text-text-main">
+                Ranking criado
+              </AppText>
+              <AppText className="mt-2 text-center text-[12px] leading-5 text-text-muted">
+                Compartilhe este código para outros alunos entrarem no grupo.
+              </AppText>
+              <View className="mt-5 rounded-2xl border border-brand-primary/30 bg-brand-primary/10 px-4 py-3">
+                <AppText className="text-center text-[24px] font-heading font-semibold tracking-[0.18em] text-brand-secondary">
+                  {createdInviteCode}
+                </AppText>
+              </View>
+              <View className="mt-5">
+                <AppButton
+                  onPress={() => {
+                    setCreatedInviteCode(null);
+                    onClose();
+                  }}
+                >
+                  Fechar
+                </AppButton>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </Modal>
   );
@@ -778,8 +767,24 @@ export function RankingsScreen() {
   const router = useRouter();
   const authSession = useAuthStore((state) => state.session);
   const [createOpen, setCreateOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
   const [tab, setTab] = useState<'global' | 'mine'>('global');
   const [activeMetric, setActiveMetric] = useState<RankingMetric>('workouts_completed');
+  const queryClient = useQueryClient();
+
+  const joinMutation = useMutation({
+    mutationFn: (code: string) => joinRankingByCode(authSession!.token, code),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['rankings-overview'] });
+      setJoinCode('');
+      setJoinOpen(false);
+      Alert.alert('Sucesso', 'Você entrou no grupo.');
+    },
+    onError: () => {
+      Alert.alert('Erro', 'Não foi possível entrar com esse código.');
+    },
+  });
 
   const rankingsQuery = useQuery({
     queryKey: ['rankings-overview'],
@@ -801,7 +806,7 @@ export function RankingsScreen() {
           title="Ranking"
           subtitle="Níveis, desafios e consistência"
           rightAction={(
-            <AppButton size="icon" onPress={() => setCreateOpen(true)}>
+            <AppButton size="icon" onPress={() => setJoinOpen(true)}>
               <Plus size={20} color="#FFFFFF" weight="bold" />
             </AppButton>
           )}
@@ -907,6 +912,56 @@ export function RankingsScreen() {
       {authSession?.token ? (
         <CreateRankingModal visible={createOpen} onClose={() => setCreateOpen(false)} token={authSession.token} />
       ) : null}
+
+      <Modal
+        visible={joinOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setJoinOpen(false)}
+      >
+        <View className="flex-1 items-center justify-center bg-black/60 px-6">
+          <View className="w-full max-w-[360px] rounded-3xl border border-border-subtle bg-bg-surface p-6">
+            <View className="mb-4 flex-row items-center justify-between">
+              <AppText className="text-[19px] font-heading font-semibold text-text-main">
+                Entrar no grupo
+              </AppText>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setJoinOpen(false)}
+                className="h-11 w-11 items-center justify-center rounded-xl border border-border-subtle bg-bg-surface"
+              >
+                <X size={16} color={colors.text.main} />
+              </Pressable>
+            </View>
+            <AppInput
+              label="Código do grupo"
+              value={joinCode}
+              onChangeText={(value) => setJoinCode(value.toUpperCase())}
+              placeholder="Ex: A1B2C3"
+              placeholderTextColor="#9CA3AF"
+              className="text-[#D1D5DB]"
+              autoCapitalize="characters"
+              autoCorrect={false}
+            />
+            <Pressable
+              accessibilityRole="button"
+              disabled={!joinCode.trim() || joinMutation.isPending}
+              onPress={() => joinMutation.mutate(joinCode.trim())}
+              className="mt-5 h-[52px] items-center justify-center rounded-[14px]"
+              style={{
+                backgroundColor: !joinCode.trim() || joinMutation.isPending ? '#1A1A1A' : colors.brand.primary,
+                opacity: !joinCode.trim() || joinMutation.isPending ? 0.55 : 1,
+              }}
+            >
+              {joinMutation.isPending ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <AppText className="text-[15px] font-bold text-white">Confirmar</AppText>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Timer,
   Trophy,
+  ClipboardText,
 } from 'phosphor-react-native';
 
 import { AppText } from '@/src/shared/components/ui/AppText';
@@ -181,6 +182,7 @@ export function RankingDetailScreen() {
   const meta = METRIC_META[metrics[0]];
   const MetricIcon = meta.Icon;
   const viewerEntry = board.entries.find((entry) => entry.studentId === authSession?.studentId);
+  const inviteCode = board.inviteCode || '';
 
   return (
     <View className="flex-1 bg-bg-base">
@@ -212,6 +214,23 @@ export function RankingDetailScreen() {
               </AppText>
             </View>
           </View>
+
+          {inviteCode ? (
+            <Pressable
+              onPress={() => Alert.alert('Código do grupo', inviteCode)}
+              className="mt-4 flex-row items-center justify-between rounded-2xl border border-brand-primary/25 bg-brand-primary/10 px-4 py-3"
+            >
+              <View>
+                <AppText className="text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">
+                  Código do grupo
+                </AppText>
+                <AppText className="mt-1 text-[16px] font-bold tracking-[0.14em] text-brand-secondary">
+                  {inviteCode}
+                </AppText>
+              </View>
+              <ClipboardText size={18} color={colors.brand.secondary} weight="bold" />
+            </Pressable>
+          ) : null}
         </View>
 
         <ScrollView

@@ -26,6 +26,7 @@ export type RankingEntryDTO = {
 
 export type RankingBoardDTO = {
   id: string;
+  inviteCode?: string | null;
   title: string;
   description: string;
   metric: RankingMetric;
@@ -70,9 +71,17 @@ export async function searchRankingStudents(token: string, search = '') {
 }
 
 export async function createRankingBoard(token: string, payload: CreateRankingPayload) {
-  return apiClient<{ id: string }>('/api/rankings/boards', {
+  return apiClient<{ id: string; inviteCode?: string | null }>('/api/rankings/boards', {
     method: 'POST',
     token,
     body: JSON.stringify(payload),
+  });
+}
+
+export async function joinRankingByCode(token: string, code: string) {
+  return apiClient<{ id: string; inviteCode?: string | null }>('/api/rankings/boards/join', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ code }),
   });
 }

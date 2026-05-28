@@ -90,44 +90,70 @@ export function AssessmentReviewScreen() {
     setErrorMsg(null);
     setIsUploading(true);
     try {
-      const uploadedPhotos = await Promise.all(
-        Object.entries(draft.photos)
-          .filter(([, uri]) => !!uri)
-          .map(async ([id, uri]) => {
-            const label =
-              assessment.questionnaire.image_questions.find(
-                (iq: any) => iq.id === id || iq._id === id,
-              )?.label || id;
-            if (uri!.startsWith('http')) return { position: id, url: uri!, label };
-            const { url } = await uploadFile(session?.token!, uri!, 'photos/evaluations');
-            return { position: id, url, label };
+      const uploadWithRetry = async <T,>(fn: () => Promise<T>, attempts = 2): Promise<T> => {
+        let lastError: unknown = null;
+        for (let index = 0; index < attempts; index += 1) {
+          try {
+            return await fn();
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        throw lastError instanceof Error ? lastError : new Error('Falha no upload.');
+      };
+
+      const uploadedPhotos: Array<{ position: string; url: string; label: string }> = [];
+      for (const [id, uri] of Object.entries(draft.photos).filter(([, value]) => Boolean(value))) {
+        const label =
+          assessment.questionnaire.image_questions.find(
+            (iq: any) => iq.id === id || iq._id === id,
+          )?.label || id;
+        if (!uri) continue;
+        if (uri.startsWith('http')) {
+          uploadedPhotos.push({ position: id, url: uri, label });
+          continue;
+        }
+        const response = await uploadWithRetry(
+          () => uploadFile(session?.token!, uri, 'photos/evaluations'),
+          2,
+        );
+        uploadedPhotos.push({ position: id, url: response.url, label });
+      }
+
+      const uploadedExams: Array<{ url: string; label: string } | null> = [];
+      for (const [id, asset] of Object.entries(draft.exams).filter(([, value]) => Boolean(value))) {
+        const label =
+          assessment.questionnaire.attachment_questions.find(
+            (item: any) => item.id === id || item._id === id,
+          )?.label || id;
+
+        if (!asset) {
+          uploadedExams.push(null);
+          continue;
+        }
+
+        if (typeof asset === 'string') {
+          if (asset.startsWith('http')) {
+            uploadedExams.push({ url: asset, label });
+            continue;
+          }
+          const response = await uploadWithRetry(
+            () => uploadFile(session?.token!, asset, 'exams/evaluations'),
+            2,
+          );
+          uploadedExams.push({ url: response.url, label });
+          continue;
+        }
+
+        const response = await uploadWithRetry(
+          () => uploadFile(session?.token!, asset.uri, 'exams/evaluations', {
+            name: asset.name,
+            mimeType: asset.mimeType,
           }),
-      );
-
-      const uploadedExams = await Promise.all(
-        Object.entries(draft.exams)
-          .filter(([, asset]) => !!asset)
-          .map(async ([id, asset]) => {
-            const label =
-              assessment.questionnaire.attachment_questions.find(
-                (item: any) => item.id === id || item._id === id,
-              )?.label || id;
-
-            if (!asset) return null;
-
-            if (typeof asset === 'string') {
-              if (asset.startsWith('http')) return { url: asset, label };
-              const { url } = await uploadFile(session?.token!, asset, 'exams/evaluations');
-              return { url, label };
-            }
-
-            const { url } = await uploadFile(session?.token!, asset.uri, 'exams/evaluations', {
-              name: asset.name,
-              mimeType: asset.mimeType,
-            });
-            return { url, label };
-          }),
-      );
+          2,
+        );
+        uploadedExams.push({ url: response.url, label });
+      }
 
       mutation.mutate({
         answers: Object.entries(draft.answers).map(([question, answer]) => ({
@@ -137,8 +163,12 @@ export function AssessmentReviewScreen() {
         photos: uploadedPhotos,
         exams: uploadedExams.filter((item): item is { url: string; label: string } => Boolean(item)),
       });
-    } catch {
-      setErrorMsg('Erro ao fazer upload dos arquivos. Verifique sua conexão e tente novamente.');
+    } catch (error: any) {
+      const fallback = 'Erro ao fazer upload dos arquivos. Verifique sua conexão e tente novamente.';
+      const message = typeof error?.message === 'string' && error.message.trim().length > 0
+        ? error.message
+        : fallback;
+      setErrorMsg(message);
     } finally {
       setIsUploading(false);
     }

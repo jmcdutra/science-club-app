@@ -4,7 +4,7 @@ import { Pressable, View } from 'react-native';
 import { AppText } from '@/src/shared/components/ui/AppText';
 
 import { Assessment, AssessmentDraft } from '../types';
-import { formatAssessmentDate, getAssessmentProgress, getStatusLabel, getStatusTone } from '../utils';
+import { formatAssessmentDate, formatAssessmentDateTime, getAssessmentProgress, getStatusLabel, getStatusTone } from '../utils';
 
 type AssessmentCardProps = {
   assessment: Assessment;
@@ -33,7 +33,9 @@ export function AssessmentCard({ assessment, draft, onPress }: AssessmentCardPro
   const metaParts: string[] = [];
   if (assessment.mesocycle) metaParts.push(assessment.mesocycle);
   if (assessment.due_date) {
-    const normalizedDate = formatAssessmentDate(assessment.due_date);
+    const normalizedDate = isScheduled
+      ? formatAssessmentDateTime(assessment.release_at || assessment.due_date)
+      : formatAssessmentDate(assessment.due_date);
     metaParts.push(isScheduled ? `Libera em ${normalizedDate}` : normalizedDate);
   }
   if (assessment.professional?.name) metaParts.push(assessment.professional.name);

@@ -25,7 +25,25 @@ export async function apiClient<TResponse>(
   });
 
   if (!response.ok) {
-    throw new Error('Nao foi possivel concluir a requisicao.');
+    let message = 'Nao foi possivel concluir a requisicao.';
+    try {
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
+        if (typeof data?.message === 'string' && data.message.trim().length > 0) {
+          message = data.message;
+        } else if (typeof data?.error === 'string' && data.error.trim().length > 0) {
+          message = data.error;
+        }
+      } else {
+        const text = await response.text();
+        if (text?.trim()) {
+          message = text.trim();
+        }
+      }
+    } catch {}
+
+    throw new Error(`HTTP ${response.status}: ${message}`);
   }
 
   return response.json() as Promise<TResponse>;

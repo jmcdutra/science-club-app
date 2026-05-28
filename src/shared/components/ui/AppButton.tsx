@@ -19,7 +19,7 @@ type AppButtonProps = PropsWithChildren<PressableProps> & {
 
 const VARIANTS: Record<AppButtonVariant, string> = {
   primary: 'bg-brand-primary border-transparent',
-  secondary: 'bg-bg-surface border-border-subtle',
+  secondary: 'bg-brand-primary border-transparent',
   ghost: 'bg-transparent border-transparent',
   tonal: 'bg-brand-secondary/10 border-transparent',
   danger: 'bg-red-500/10 border-red-500/20',
@@ -27,7 +27,7 @@ const VARIANTS: Record<AppButtonVariant, string> = {
 
 const TEXT_VARIANTS: Record<AppButtonVariant, string> = {
   primary: 'text-white',
-  secondary: 'text-text-main',
+  secondary: 'text-white',
   ghost: 'text-brand-primary',
   tonal: 'text-brand-primary',
   danger: 'text-red-400',
@@ -93,21 +93,21 @@ export function AppButton({
         fullWidth || (size === 'md' && !isIconOnly) ? 'w-full' : null,
         SIZES[size],
         VARIANTS[variant],
-        variant === 'primary' && !isDisabled ? 'shadow-lg shadow-brand-primary/30' : null,
+        (variant === 'primary' || variant === 'secondary') && !isDisabled ? 'shadow-lg shadow-brand-primary/30' : null,
         isDisabled ? 'bg-[#1A1A1A] border-transparent opacity-50' : null,
         className,
       )}
       style={({ pressed }) => [{ transform: [{ scale: pressed && !isDisabled ? 0.97 : 1 }] }]}
       {...props}
     >
-      {variant === 'primary' && !isDisabled && (
+      {(variant === 'primary' || variant === 'secondary') && !isDisabled && (
         <View
           pointerEvents="none"
           className="absolute left-0 right-0 top-0 h-px"
           style={{ backgroundColor: 'rgba(255,255,255,0.18)' }}
         />
       )}
-      {variant === 'primary' && !isDisabled && (
+      {(variant === 'primary' || variant === 'secondary') && !isDisabled && (
         <View
           pointerEvents="none"
           className="absolute bottom-0 left-0 right-0 h-px"

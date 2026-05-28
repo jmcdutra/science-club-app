@@ -8,6 +8,7 @@ import { CaretDown, CaretRight, CheckCircle, Drop, ForkKnife } from 'phosphor-re
 
 import { AppText } from '@/src/shared/components/ui/AppText';
 import { NotificationsModal } from '@/src/shared/components/ui/NotificationsModal';
+import { resolveApiUrl } from '@/src/shared/api/apiClient';
 import { useAuthStore } from '@/src/features/auth/services/auth.store';
 import { PageHeader } from '@/src/shared/components/layout/PageHeader';
 import { useRefetchOnFocus } from '@/src/shared/hooks/useRefetchOnFocus';
@@ -57,6 +58,7 @@ const formatDateLabel = (value?: string | null) => {
   return parsed.toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: 'short',
+    timeZone: 'America/Sao_Paulo',
   });
 };
 
@@ -69,6 +71,7 @@ const formatDateTimeLabel = (value?: string | null) => {
     month: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'America/Sao_Paulo',
   });
 };
 
@@ -234,6 +237,7 @@ export function AssessmentsDashboardScreen() {
   const [notifVisible, setNotifVisible] = useState(false);
   const [selectedWorkoutRecord, setSelectedWorkoutRecord] = useState<WorkoutSessionHistoryDTO | null>(null);
   const [selectedDietDay, setSelectedDietDay] = useState<DietAdherenceDay | null>(null);
+  const [selectedAssessmentPhotos, setSelectedAssessmentPhotos] = useState<{ title: string; photos: { url: string; label?: string; position?: string }[] } | null>(null);
   const [expandedWorkoutExercises, setExpandedWorkoutExercises] = useState<Record<string, boolean>>({});
 
   const { data: assessments = [], isLoading: isLoadingAssessments, refetch: refetchAssessments } = useQuery({
@@ -276,18 +280,24 @@ export function AssessmentsDashboardScreen() {
     [sortedAssessments],
   );
 
-  const completedAssessments = useMemo(
-    () => sortedAssessments.filter((assessment) => assessment.status === 'done' || !!assessment.result),
-    [sortedAssessments],
-  );
+  const completedAssessments = useMemo(() => {
+    return sortedAssessments.filter((assessment) => {
+      // Histórico anterior deve conter somente avaliações já finalizadas/enviadas.
+      // Nunca incluir avaliações agendadas/futuras nessa seção.
+      return assessment.status === 'done' || assessment.status === 'answered' || assessment.status === 'analysis';
+    });
+  }, [sortedAssessments]);
 
-  const upcomingAssessments = useMemo(
-    () =>
-      sortedAssessments
-        .filter((assessment) => assessment.status !== 'done')
-        .slice(0, 4),
-    [sortedAssessments],
-  );
+  const upcomingAssessments = useMemo(() => {
+    const now = Date.now();
+    return sortedAssessments
+      .filter((assessment) => {
+        if (assessment.status === 'done' || assessment.status === 'answered' || assessment.status === 'analysis') return false;
+        const dueTime = new Date(assessment.due_date || 0).getTime();
+        return !Number.isFinite(dueTime) || dueTime >= now;
+      })
+      .slice(0, 4);
+  }, [sortedAssessments]);
 
   const photoComparison = useMemo(() => {
     const evaluationsWithPhotos = assessments.filter((assessment) => assessment.photos?.length);
@@ -426,7 +436,13 @@ export function AssessmentsDashboardScreen() {
                           disabled={!assessment}
                           onPress={() => {
                             if (!assessment) return;
-                            router.push(`/(app)/assessments/${assessment.id}` as Href);
+                            setSelectedAssessmentPhotos({
+                              title: assessment.title || 'Avaliação',
+                              photos: (assessment.photos || []).map((photo) => ({
+                                ...photo,
+                                url: resolveApiUrl(photo.url) || photo.url,
+                              })),
+                            });
                           }}
                           style={{ flex: 1 }}
                         >
@@ -442,7 +458,7 @@ export function AssessmentsDashboardScreen() {
                           >
                             {photo ? (
                               <Image
-                                source={{ uri: photo.url }}
+                                source={{ uri: resolveApiUrl(photo.url) || photo.url }}
                                 style={{ width: '100%', aspectRatio: 0.8, backgroundColor: '#111111' }}
                                 resizeMode="cover"
                               />
@@ -782,6 +798,48 @@ export function AssessmentsDashboardScreen() {
           </Animated.View>
         </ScrollView>
       </SafeAreaView>
+
+      <Modal
+        visible={Boolean(selectedAssessmentPhotos)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedAssessmentPhotos(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.82)', padding: 24, justifyContent: 'center' }}>
+          <Pressable style={{ position: 'absolute', inset: 0 }} onPress={() => setSelectedAssessmentPhotos(null)} />
+          <View
+            style={{
+              maxHeight: '84%',
+              borderRadius: 28,
+              backgroundColor: '#0F0F10',
+              borderWidth: 1,
+              borderColor: '#1F1F23',
+              padding: 18,
+            }}
+          >
+            <AppText style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 3, color: '#666666', marginBottom: 8 }}>
+              Fotos da avaliação
+            </AppText>
+            <AppText style={{ fontSize: 20, fontWeight: '700', color: '#FFFFFF', marginBottom: 16 }}>
+              {selectedAssessmentPhotos?.title || 'Avaliação'}
+            </AppText>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={{ gap: 12 }}>
+                {(selectedAssessmentPhotos?.photos || []).map((photo, index) => (
+                  <View key={`${photo.url}-${index}`} style={{ borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#232328', backgroundColor: '#151518' }}>
+                    <Image source={{ uri: resolveApiUrl(photo.url) || photo.url }} style={{ width: '100%', aspectRatio: 0.8, backgroundColor: '#111111' }} resizeMode="cover" />
+                    <View style={{ padding: 12 }}>
+                      <AppText style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+                        {photo.label || photo.position || `Foto ${index + 1}`}
+                      </AppText>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={Boolean(selectedWorkoutRecord)}
