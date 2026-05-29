@@ -69,6 +69,213 @@ function formatKg(value: number) {
   }).format(value);
 }
 
+function normalizeSetLabel(value?: string) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function isValidWorkoutSet(set: { type?: string; label?: string }) {
+  const type = normalizeSetLabel(set.type);
+  const label = normalizeSetLabel(set.label);
+
+  return (
+    type !== "warmup" &&
+    type !== "preparatory" &&
+    label !== "aquecimento" &&
+    label !== "preparatoria" &&
+    label !== "preparatorio"
+  );
+}
+
+function getValidSetLabel(set: { label?: string }, validIndex: number) {
+  const label = String(set.label || "").trim();
+  if (label && isValidWorkoutSet(set)) return label;
+  return `Série ${validIndex + 1}`;
+}
+
+function formatDeltaLabel(delta: number, suffix: string) {
+  if (!delta) return `0 ${suffix}`;
+  const sign = delta > 0 ? "+" : "-";
+  return `${sign}${formatKg(Math.abs(delta))} ${suffix}`;
+}
+
+function getDeltaTone(delta: number, hasPrevious: boolean) {
+  if (!hasPrevious) return "#A1A1AA";
+  if (delta > 0) return "#A78BFA";
+  if (delta < 0) return "#F59E0B";
+  return "#A1A1AA";
+}
+
+function ProgressRail({
+  accentColor,
+  current,
+  hasPrevious,
+  label,
+  previous,
+  suffix,
+  withHelper = false,
+}: {
+  accentColor: string;
+  current: number;
+  hasPrevious: boolean;
+  label: string;
+  previous: number;
+  suffix: string;
+  withHelper?: boolean;
+}) {
+  const maxValue = Math.max(current, previous, 1);
+  const delta = current - previous;
+  const deltaColor = getDeltaTone(delta, hasPrevious);
+  const currentWidth = Math.max(6, (current / maxValue) * 100);
+  const previousWidth = hasPrevious
+    ? Math.max(6, (previous / maxValue) * 100)
+    : 0;
+
+  return (
+    <View className="gap-2.5">
+      <View className="flex-row items-center justify-between">
+        <View>
+          <AppText className="text-[11px] font-bold uppercase tracking-[0.12em] text-text-muted">
+            {label}
+          </AppText>
+          {withHelper ? (
+            <AppText className="mt-0.5 text-[10px] leading-[13px] text-text-muted">
+              {label === "Peso"
+                ? "Carga executada na série"
+                : "Repetições feitas na série"}
+            </AppText>
+          ) : null}
+        </View>
+        <AppText
+          className="text-[11px] font-bold"
+          style={{ color: deltaColor }}
+        >
+          {hasPrevious ? formatDeltaLabel(delta, suffix) : "Sem histórico"}
+        </AppText>
+      </View>
+
+      <View className="gap-2">
+        <View>
+          <View className="mb-1.5 flex-row items-center justify-between">
+            <AppText className="text-[10px] font-semibold text-text-muted">
+              Hoje
+            </AppText>
+            <AppText className="text-[10px] font-bold text-text-main">
+              {formatKg(current)} {suffix}
+            </AppText>
+          </View>
+          <View className="h-3.5 overflow-hidden rounded-full bg-bg-surface">
+            <View
+              className="h-full rounded-full"
+              style={{
+                width: `${currentWidth}%`,
+                backgroundColor: accentColor,
+              }}
+            />
+          </View>
+        </View>
+
+        <View>
+          <View className="mb-1.5 flex-row items-center justify-between">
+            <AppText className="text-[10px] font-semibold text-text-muted">
+              Último
+            </AppText>
+            <AppText className="text-[10px] font-bold text-text-main">
+              {hasPrevious ? `${formatKg(previous)} ${suffix}` : "-"}
+            </AppText>
+          </View>
+          <View className="h-3.5 overflow-hidden rounded-full bg-bg-surface">
+            {hasPrevious ? (
+              <View
+                className="h-full rounded-full"
+                style={{
+                  width: `${previousWidth}%`,
+                  backgroundColor: "#71717A",
+                }}
+              />
+            ) : null}
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function SummaryRail({
+  accentColor,
+  current,
+  hasPrevious,
+  label,
+  previous,
+  suffix,
+}: {
+  accentColor: string;
+  current: number;
+  hasPrevious: boolean;
+  label: string;
+  previous: number;
+  suffix: string;
+}) {
+  const maxValue = Math.max(current, previous, 1);
+  const delta = current - previous;
+  const currentWidth = Math.max(6, (current / maxValue) * 100);
+  const previousWidth = hasPrevious
+    ? Math.max(6, (previous / maxValue) * 100)
+    : 0;
+
+  return (
+    <View className="gap-2.5">
+      <View className="flex-row items-end justify-between gap-3">
+        <View className="flex-1">
+          <AppText className="text-[12px] font-bold text-text-main">
+            {label}
+          </AppText>
+          <AppText className="mt-0.5 text-[10px] leading-[14px] text-text-muted">
+            {label === "Peso médio"
+              ? "Média das cargas nas séries válidas"
+              : "Total de repetições válidas no treino"}
+          </AppText>
+        </View>
+        <AppText
+          className="text-[11px] font-bold"
+          style={{ color: getDeltaTone(delta, hasPrevious) }}
+        >
+          {hasPrevious ? formatDeltaLabel(delta, suffix) : "Sem histórico"}
+        </AppText>
+      </View>
+
+      <View className="gap-2">
+        <View className="h-4 overflow-hidden rounded-full bg-bg-surface">
+          <View
+            className="h-full rounded-full"
+            style={{ width: `${currentWidth}%`, backgroundColor: accentColor }}
+          />
+        </View>
+        <View className="h-2.5 overflow-hidden rounded-full bg-bg-surface">
+          {hasPrevious ? (
+            <View
+              className="h-full rounded-full"
+              style={{ width: `${previousWidth}%`, backgroundColor: "#71717A" }}
+            />
+          ) : null}
+        </View>
+      </View>
+
+      <View className="flex-row justify-between">
+        <AppText className="text-[10px] font-semibold text-text-muted">
+          Hoje: {formatKg(current)} {suffix}
+        </AppText>
+        <AppText className="text-[10px] font-semibold text-text-muted">
+          Último: {hasPrevious ? `${formatKg(previous)} ${suffix}` : "-"}
+        </AppText>
+      </View>
+    </View>
+  );
+}
+
 function StatTile({
   label,
   value,
@@ -116,12 +323,11 @@ export function WorkoutFinishScreen() {
   const queryClient = useQueryClient();
   const composedShareRef = useRef<View>(null);
   const overlayStickerRef = useRef<View>(null);
-  const { id, sessionId, elapsed, sets, exercises } =
+  const { id, sessionId, elapsed, exercises } =
     useLocalSearchParams<{
       id: string;
       sessionId?: string;
       elapsed?: string;
-      sets?: string;
       exercises?: string;
     }>();
   const { session: authSession } = useAuthStore();
@@ -158,7 +364,6 @@ export function WorkoutFinishScreen() {
   const autoFinalizeAttemptedRef = useRef(false);
 
   const elapsedSeconds = Number(elapsed ?? 0);
-  const completedSets = Number(sets ?? 0);
   const completedExercises = Number(exercises ?? sessionExercises.length);
   const instagramStoriesAppId =
     Constants.expoConfig?.extra?.instagramStoriesAppId;
@@ -177,9 +382,12 @@ export function WorkoutFinishScreen() {
       let totalVolumeKg = 0;
       let totalReps = 0;
       let bestSetKg = 0;
+      let validSetCursor = 0;
 
       const sets = exercise.sets.map((set, setIndex) => {
         const setKey = `${exercise.id}:${set.id}`;
+        const isValidSet = isValidWorkoutSet(set);
+        const validSetIndex = isValidSet ? validSetCursor++ : -1;
         const performedWeightKg = parseWeightValue(
           currentProgress?.weight_overrides?.[setKey] || set.weight || "",
         );
@@ -189,7 +397,7 @@ export function WorkoutFinishScreen() {
         const completed = setIndex < completedSetsForExercise;
         const volumeKg = completed ? performedWeightKg * performedReps : 0;
 
-        if (completed) {
+        if (completed && isValidSet) {
           totalVolumeKg += volumeKg;
           totalReps += performedReps;
           if (performedWeightKg > bestSetKg) bestSetKg = performedWeightKg;
@@ -197,17 +405,21 @@ export function WorkoutFinishScreen() {
 
         return {
           setId: set.id,
+          label: getValidSetLabel(set, Math.max(validSetIndex, 0)),
           performedWeightKg,
           performedReps,
           completed,
-          volumeKg,
+          isValidSet,
         };
       });
+      const validCompletedSets = sets.filter(
+        (set) => set.completed && set.isValidSet,
+      );
 
       return {
         exerciseId: exercise.id,
         exerciseName: exercise.name,
-        completedSets: completedSetsForExercise,
+        completedSets: validCompletedSets.length,
         totalVolumeKg,
         totalReps,
         bestSetKg,
@@ -228,26 +440,7 @@ export function WorkoutFinishScreen() {
         (sum, exercise) => sum + exercise.completedSets,
         0,
       ),
-      durationMinutes: Math.round(elapsedSeconds / 60),
       exercises,
-    };
-  })();
-
-  const comparisonSummary = (() => {
-    const previousVolumeKg = Number(previousHistoryEntry?.volumeKg || 0);
-    const previousReps = Number(previousHistoryEntry?.totalReps || 0);
-    const previousDurationMinutes = Number(
-      previousHistoryEntry?.durationMinutes || 0,
-    );
-
-    return {
-      previousVolumeKg,
-      previousReps,
-      previousDurationMinutes,
-      volumeDeltaKg: currentMetrics.totalVolumeKg - previousVolumeKg,
-      repsDelta: currentMetrics.totalReps - previousReps,
-      durationDelta:
-        currentMetrics.durationMinutes - previousDurationMinutes,
     };
   })();
 
@@ -261,25 +454,72 @@ export function WorkoutFinishScreen() {
 
     return currentMetrics.exercises.map((exercise) => {
       const previous = previousByExercise.get(exercise.exerciseId);
+      const previousSetsById = new Map(
+        (previous?.sets || []).map((set) => [set.setId, set]),
+      );
+      const validSets = exercise.sets
+        .filter((set) => set.completed && set.isValidSet)
+        .map((set) => {
+          const previousSet = previousSetsById.get(set.setId);
+          const hasPrevious = Boolean(previousSet?.completed);
+          return {
+            setId: set.setId,
+            label: set.label,
+            currentWeightKg: set.performedWeightKg,
+            previousWeightKg: hasPrevious
+              ? Number(previousSet?.performedWeightKg || 0)
+              : 0,
+            currentReps: set.performedReps,
+            previousReps: hasPrevious
+              ? Number(previousSet?.performedReps || 0)
+              : 0,
+            hasPrevious,
+          };
+        });
+
       return {
         exerciseId: exercise.exerciseId,
         exerciseName: exercise.exerciseName,
-        currentVolumeKg: exercise.totalVolumeKg,
-        previousVolumeKg: Number(previous?.totalVolumeKg || 0),
-        currentReps: exercise.totalReps,
-        previousReps: Number(previous?.totalReps || 0),
+        validSets,
         currentBestSetKg: exercise.bestSetKg,
-        previousBestSetKg: Number(
-          previous?.sets?.reduce(
-            (best, set) =>
-              Number(set.performedWeightKg || 0) > best
-                ? Number(set.performedWeightKg || 0)
-                : best,
-            0,
-          ) || 0,
-        ),
       };
     });
+  })();
+
+  const comparisonSummary = (() => {
+    const validSets = exerciseComparisons.flatMap(
+      (exercise) => exercise.validSets,
+    );
+    const previousValidSets = validSets.filter((set) => set.hasPrevious);
+    const currentWeightTotal = validSets.reduce(
+      (sum, set) => sum + set.currentWeightKg,
+      0,
+    );
+    const previousWeightTotal = previousValidSets.reduce(
+      (sum, set) => sum + set.previousWeightKg,
+      0,
+    );
+    const previousReps = previousValidSets.reduce(
+      (sum, set) => sum + set.previousReps,
+      0,
+    );
+
+    return {
+      currentAverageWeightKg: validSets.length
+        ? currentWeightTotal / validSets.length
+        : 0,
+      previousAverageWeightKg: previousValidSets.length
+        ? previousWeightTotal / previousValidSets.length
+        : 0,
+      hasPrevious: previousValidSets.length > 0,
+      previousReps,
+      repsDelta: currentMetrics.totalReps - previousReps,
+      averageWeightDeltaKg:
+        (validSets.length ? currentWeightTotal / validSets.length : 0) -
+        (previousValidSets.length
+          ? previousWeightTotal / previousValidSets.length
+          : 0),
+    };
   })();
 
   const hasUnsavedPostFinishChanges =
@@ -547,15 +787,15 @@ export function WorkoutFinishScreen() {
             </View>
             <View className="items-center rounded-full border border-brand-primary/70 bg-brand-primary/20 px-6 py-4">
               <AppText className="text-4xl font-semibold text-brand-secondary">
-                {completedSets}
+                {currentMetrics.validSets}
               </AppText>
-              <AppText className="text-xs text-white/70">séries</AppText>
+              <AppText className="text-xs text-white/70">séries vál.</AppText>
             </View>
             <View className="items-center">
               <AppText className="text-3xl font-semibold text-white">
                 {formatKg(currentMetrics.totalVolumeKg)}
               </AppText>
-              <AppText className="text-xs text-white/70">kg volume</AppText>
+              <AppText className="text-xs text-white/70">kg válidos</AppText>
             </View>
           </View>
           <AppText className="mt-6 text-3xl font-semibold text-white">
@@ -604,15 +844,15 @@ export function WorkoutFinishScreen() {
             </View>
             <View className="items-center rounded-full border border-brand-primary/50 bg-brand-primary/10 px-7 py-4">
               <AppText className="text-4xl font-semibold text-brand-secondary">
-                {completedSets}
+                {currentMetrics.validSets}
               </AppText>
-              <AppText className="text-xs text-text-muted">séries</AppText>
+              <AppText className="text-xs text-text-muted">séries vál.</AppText>
             </View>
             <View className="items-center">
               <AppText className="text-3xl font-semibold text-text-main">
                 {formatKg(currentMetrics.totalVolumeKg)}
               </AppText>
-              <AppText className="text-xs text-text-muted">kg volume</AppText>
+              <AppText className="text-xs text-text-muted">kg válidos</AppText>
             </View>
           </View>
           <AppText className="mt-5 text-3xl font-semibold text-text-main">
@@ -672,7 +912,7 @@ export function WorkoutFinishScreen() {
                 iconColor="#8B5CF6"
               />
               <StatTile
-                label="Volume"
+                label="Volume válido"
                 value={formatKg(currentMetrics.totalVolumeKg)}
                 unit="kg"
                 icon={<TrendUp size={14} color="#22C55E" weight="bold" />}
@@ -680,8 +920,8 @@ export function WorkoutFinishScreen() {
                 iconColor="#22C55E"
               />
               <StatTile
-                label="Séries"
-                value={String(completedSets)}
+                label="Séries válidas"
+                value={String(currentMetrics.validSets)}
                 icon={<CheckCircle size={14} color="#38BDF8" weight="fill" />}
                 iconBackground="rgba(56,189,248,0.12)"
                 iconColor="#38BDF8"
@@ -697,167 +937,157 @@ export function WorkoutFinishScreen() {
 
             <View className="mb-[18px] gap-3">
               <AppText className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">
-                Comparativo com o último treino
+                Comparativo de progressão
               </AppText>
 
-              <AppCard className="rounded-[22px] px-4 py-4">
-                <View className="gap-4">
-                  {[
-                    {
-                      label: "Volume",
-                      current: currentMetrics.totalVolumeKg,
-                      previous: comparisonSummary.previousVolumeKg,
-                      suffix: "kg",
-                    },
-                    {
-                      label: "Repetições",
-                      current: currentMetrics.totalReps,
-                      previous: comparisonSummary.previousReps,
-                      suffix: "reps",
-                    },
-                    {
-                      label: "Duração",
-                      current: currentMetrics.durationMinutes,
-                      previous: comparisonSummary.previousDurationMinutes,
-                      suffix: "min",
-                    },
-                  ].map((metric) => {
-                    const maxValue = Math.max(metric.current, metric.previous, 1);
-                    const delta = metric.current - metric.previous;
-                    return (
-                      <View key={metric.label}>
-                        <View className="mb-2 flex-row items-center justify-between">
-                          <AppText className="text-[12px] font-semibold text-text-main">
-                            {metric.label}
-                          </AppText>
-                          <AppText
-                            className="text-[11px] font-semibold"
-                            style={{
-                              color:
-                                delta > 0
-                                  ? "#22C55E"
-                                  : delta < 0
-                                    ? "#F59E0B"
-                                    : "#A1A1AA",
-                            }}
-                          >
-                            {delta > 0 ? "+" : ""}
-                            {formatKg(Math.abs(delta))} {metric.suffix}
-                          </AppText>
-                        </View>
-                        <View className="gap-2">
-                          <View>
-                            <View className="mb-1 flex-row items-center justify-between">
-                              <AppText className="text-[10px] text-text-muted">
-                                Hoje
-                              </AppText>
-                              <AppText className="text-[10px] font-semibold text-text-main">
-                                {formatKg(metric.current)} {metric.suffix}
-                              </AppText>
-                            </View>
-                            <View className="h-2 overflow-hidden rounded-full bg-bg-surface">
-                              <View
-                                className="h-full rounded-full"
-                                style={{
-                                  width: `${(metric.current / maxValue) * 100}%`,
-                                  backgroundColor: "#22C55E",
-                                }}
-                              />
-                            </View>
-                          </View>
-                          <View>
-                            <View className="mb-1 flex-row items-center justify-between">
-                              <AppText className="text-[10px] text-text-muted">
-                                Último
-                              </AppText>
-                              <AppText className="text-[10px] font-semibold text-text-main">
-                                {formatKg(metric.previous)} {metric.suffix}
-                              </AppText>
-                            </View>
-                            <View className="h-2 overflow-hidden rounded-full bg-bg-surface">
-                              <View
-                                className="h-full rounded-full"
-                                style={{
-                                  width: `${(metric.previous / maxValue) * 100}%`,
-                                  backgroundColor: "#8B5CF6",
-                                }}
-                              />
-                            </View>
-                          </View>
-                        </View>
-                      </View>
-                    );
-                  })}
+              <AppCard className="rounded-[24px] px-4 py-4">
+                <View className="flex-row items-start gap-3">
+                  <View className="mt-0.5 h-9 w-9 items-center justify-center rounded-full bg-brand-primary/15">
+                    <TrendUp size={16} color="#A78BFA" weight="bold" />
+                  </View>
+                  <View className="flex-1">
+                    <AppText className="text-[15px] font-bold text-text-main">
+                      Progresso sem distorcer por volume
+                    </AppText>
+                    <AppText className="mt-1.5 text-[12px] leading-[17px] text-text-muted">
+                      Volume é peso × reps × séries, somente séries válidas.
+                    </AppText>
+                  </View>
                 </View>
-              </AppCard>
 
-              <AppCard className="rounded-[22px] px-4 py-4">
-                <AppText className="mb-3 text-[12px] font-semibold text-text-main">
-                  Comparativo por exercício
-                </AppText>
-                <View className="gap-3">
-                  {exerciseComparisons.map((exercise) => {
-                    const maxVolume = Math.max(
-                      exercise.currentVolumeKg,
-                      exercise.previousVolumeKg,
-                      1,
-                    );
-                    return (
-                      <View key={exercise.exerciseId}>
-                        <View className="mb-1.5 flex-row items-start justify-between gap-3">
-                          <AppText className="flex-1 text-[12px] font-semibold leading-[18px] text-text-main">
-                            {exercise.exerciseName}
-                          </AppText>
-                          <View className="rounded-full bg-bg-surface px-2.5 py-1">
-                            <AppText className="text-[9px] font-semibold text-text-muted">
-                              Carga máx. {formatKg(exercise.currentBestSetKg)} /{" "}
-                              {formatKg(exercise.previousBestSetKg)} kg
+                <View className="mt-4 gap-4 rounded-[18px] bg-brand-primary/5 px-3.5 py-3.5">
+                  <View className="flex-row items-center justify-between">
+                    <View className="flex-row items-center gap-2">
+                      <View className="h-2.5 w-2.5 rounded-full bg-brand-secondary" />
+                      <AppText className="text-[10px] font-bold uppercase tracking-[0.12em] text-text-muted">
+                        Hoje
+                      </AppText>
+                    </View>
+                    <View className="flex-row items-center gap-2">
+                      <View className="h-2.5 w-2.5 rounded-full bg-zinc-500" />
+                      <AppText className="text-[10px] font-bold uppercase tracking-[0.12em] text-text-muted">
+                        Último treino
+                      </AppText>
+                    </View>
+                  </View>
+
+                  <SummaryRail
+                    accentColor="#A78BFA"
+                    current={comparisonSummary.currentAverageWeightKg}
+                    hasPrevious={comparisonSummary.hasPrevious}
+                    label="Peso médio"
+                    previous={comparisonSummary.previousAverageWeightKg}
+                    suffix="kg"
+                  />
+
+                  <View className="h-px bg-border-subtle" />
+
+                  <SummaryRail
+                    accentColor="#38BDF8"
+                    current={currentMetrics.totalReps}
+                    hasPrevious={comparisonSummary.hasPrevious}
+                    label="Repetições"
+                    previous={comparisonSummary.previousReps}
+                    suffix="reps"
+                  />
+                </View>
+
+                <View className="mt-5">
+                  <AppText className="text-[12px] font-bold text-text-main">
+                    Por exercício e por série
+                  </AppText>
+                  <AppText className="mt-1 text-[11px] leading-[16px] text-text-muted">
+                    Aquecimento e preparatórias não entram. Cada linha compara a
+                    mesma série do treino anterior.
+                  </AppText>
+                </View>
+
+                <View className="mt-2">
+                  {exerciseComparisons
+                    .filter((exercise) => exercise.validSets.length > 0)
+                    .map((exercise, exerciseIndex) => (
+                      <View
+                        key={exercise.exerciseId}
+                        className={
+                          exerciseIndex === 0
+                            ? "pt-4"
+                            : "mt-4 border-t border-border-subtle pt-4"
+                        }
+                      >
+                        <View className="mb-3 flex-row items-start justify-between gap-3">
+                          <View className="flex-1">
+                            <AppText className="text-[14px] font-bold leading-[19px] text-text-main">
+                              {exercise.exerciseName}
+                            </AppText>
+                            <AppText className="mt-1 text-[10px] text-text-muted">
+                              {exercise.validSets.length} série
+                              {exercise.validSets.length === 1 ? "" : "s"} válida
+                              {exercise.validSets.length === 1 ? "" : "s"}
+                            </AppText>
+                          </View>
+                          <View className="rounded-full bg-brand-primary/10 px-2.5 py-1">
+                            <AppText className="text-[9px] font-semibold text-brand-secondary">
+                              Máx. {formatKg(exercise.currentBestSetKg)} kg
                             </AppText>
                           </View>
                         </View>
-                        <View className="gap-2">
-                          <View className="flex-row items-center gap-2">
-                            <View className="w-12">
-                              <AppText className="text-[10px] text-text-muted">
-                                Hoje
-                              </AppText>
-                            </View>
-                            <View className="h-2 flex-1 overflow-hidden rounded-full bg-bg-surface">
-                              <View
-                                className="h-full rounded-full"
-                                style={{
-                                  width: `${(exercise.currentVolumeKg / maxVolume) * 100}%`,
-                                  backgroundColor: "#22C55E",
-                                }}
+
+                        <View className="gap-4">
+                          {exercise.validSets.map((set, setIndex) => (
+                            <View
+                              key={set.setId}
+                              className={
+                                setIndex === 0
+                                  ? "gap-3"
+                                  : "gap-3 border-t border-border-subtle pt-3"
+                              }
+                            >
+                              <View className="flex-row items-center justify-between">
+                                <AppText className="text-[12px] font-bold text-text-main">
+                                  {set.label}
+                                </AppText>
+                                <AppText className="text-[10px] font-semibold text-brand-secondary">
+                                  série válida
+                                </AppText>
+                              </View>
+
+                              <ProgressRail
+                                accentColor="#A78BFA"
+                                current={set.currentWeightKg}
+                                hasPrevious={set.hasPrevious}
+                                label="Peso"
+                                previous={set.previousWeightKg}
+                                suffix="kg"
+                                withHelper
+                              />
+                              <ProgressRail
+                                accentColor="#38BDF8"
+                                current={set.currentReps}
+                                hasPrevious={set.hasPrevious}
+                                label="Reps"
+                                previous={set.previousReps}
+                                suffix="reps"
+                                withHelper
                               />
                             </View>
-                            <AppText className="w-20 text-right text-[10px] font-semibold text-text-main">
-                              {formatKg(exercise.currentVolumeKg)} kg
-                            </AppText>
-                          </View>
-                          <View className="flex-row items-center gap-2">
-                            <View className="w-12">
-                              <AppText className="text-[10px] text-text-muted">
-                                Último
-                              </AppText>
-                            </View>
-                            <View className="h-2 flex-1 overflow-hidden rounded-full bg-bg-surface">
-                              <View
-                                className="h-full rounded-full"
-                                style={{
-                                  width: `${(exercise.previousVolumeKg / maxVolume) * 100}%`,
-                                  backgroundColor: "#8B5CF6",
-                                }}
-                              />
-                            </View>
-                            <AppText className="w-20 text-right text-[10px] font-semibold text-text-main">
-                              {formatKg(exercise.previousVolumeKg)} kg
-                            </AppText>
-                          </View>
+                          ))}
                         </View>
                       </View>
-                    );
-                  })}
+                    ))}
+
+                  {exerciseComparisons.every(
+                    (exercise) => exercise.validSets.length === 0,
+                  ) ? (
+                    <View className="rounded-2xl bg-bg-surface px-4 py-4">
+                      <AppText className="text-[12px] font-semibold text-text-main">
+                        Nenhuma série válida concluída
+                      </AppText>
+                      <AppText className="mt-1 text-[11px] leading-[16px] text-text-muted">
+                        Séries de aquecimento ou preparação não entram neste
+                        comparativo.
+                      </AppText>
+                    </View>
+                  ) : null}
                 </View>
               </AppCard>
             </View>
