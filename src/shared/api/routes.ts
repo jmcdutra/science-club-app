@@ -7,6 +7,25 @@ interface RequestOptions {
   headers?: Record<string, string>;
 }
 
+async function readErrorResponse(response: Response) {
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    try {
+      return await response.json();
+    } catch (error) {
+      return { parseError: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  try {
+    const text = await response.text();
+    return text ? { message: text } : null;
+  } catch (error) {
+    return { parseError: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 async function request<TResponse>(
   method: HttpMethod,
   path: string,
@@ -28,16 +47,32 @@ async function request<TResponse>(
     ...(body && method !== 'GET' ? { body: JSON.stringify(body) } : {}),
   };
 
-  const response = await fetch(url, config);
+  let response: Response;
+  try {
+    response = await fetch(url, config);
+  } catch (error) {
+    console.error('[API] Falha de conexão', {
+      method,
+      path,
+      url,
+      error,
+    });
+    throw error;
+  }
 
   if (!response.ok) {
     let errorMessage = 'Não foi possível concluir a requisição.';
-    try {
-      const errorData = await response.json();
-      errorMessage = errorData.message || errorData.error || errorMessage;
-    } catch {
-      // Ignora erro de parse
-    }
+    const errorData = await readErrorResponse(response);
+    errorMessage = errorData?.message || errorData?.error || errorMessage;
+
+    console.error('[API] Requisição falhou', {
+      method,
+      path,
+      status: response.status,
+      statusText: response.statusText,
+      response: errorData,
+    });
+
     throw new Error(errorMessage);
   }
 
